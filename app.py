@@ -89,6 +89,24 @@ def update_host_status(host_id, is_up):
         connection.commit()
 
 
+def parse_bulk_hosts(raw_text):
+    hosts = []
+    for line in raw_text.splitlines():
+        cleaned = line.strip()
+        if not cleaned:
+            continue
+        if "," in cleaned:
+            parts = [part.strip() for part in cleaned.split(",", 1)]
+        else:
+            parts = cleaned.split(None, 1)
+        if len(parts) != 2:
+            continue
+        hostname, ip_address = parts
+        if hostname and ip_address:
+            hosts.append((hostname, ip_address))
+    return hosts
+
+
 @app.route("/", methods=["GET", "POST"])
 def index():
     if request.method == "POST":
@@ -106,6 +124,19 @@ def index():
     with get_db_connection() as connection:
         hosts = connection.execute("SELECT * FROM hosts ORDER BY hostname").fetchall()
     return render_template("index.html", hosts=hosts)
+
+
+@app.route("/bulk_upload", methods=["POST"])
+def bulk_upload():
+    bulk_text = request.form.get("bulk_hosts", "")
+    hosts = parse_bulk_hosts(bulk_text)
+    if hosts:
+        with get_db_connection() as connection:
+            connection.executemany(
+                "INSERT INTO hosts (hostname, ip_address) VALUES (?, ?)", hosts
+            )
+            connection.commit()
+    return redirect(url_for("index"))
 
 
 @app.route("/ping/<int:host_id>")

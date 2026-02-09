@@ -17,6 +17,17 @@
 </section>
 
 <section class="card">
+  <h2>Bulk Upload Hosts</h2>
+  <form method="post" action="{{ url_for('bulk_upload') }}" class="form-grid">
+    <label>
+      Enter one host per line (hostname,IP or hostname IP)
+      <textarea name="bulk_hosts" rows="6" placeholder="router-1,10.0.0.1"></textarea>
+    </label>
+    <button type="submit">Upload Hosts</button>
+  </form>
+</section>
+
+<section class="card">
   <div class="section-header">
     <h2>Hosts</h2>
     <a class="button" href="{{ url_for('ping_all') }}">Ping All</a>
