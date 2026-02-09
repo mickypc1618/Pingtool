@@ -8,7 +8,14 @@
 <section class="card">
   <div class="section-header">
     <h2>Agilico Dashboard</h2>
-    <a class="button" href="{{ url_for('ping_all') }}">Refresh Status</a>
+    <div class="header-actions">
+      <a class="button" href="{{ url_for('ping_all') }}">Refresh Status</a>
+      {% if show_unknown %}
+        <a class="button button-secondary" href="{{ url_for('dashboard') }}">Hide Unknown</a>
+      {% else %}
+        <a class="button button-secondary" href="{{ url_for('dashboard', show_unknown=1) }}">Show Unknown</a>
+      {% endif %}
+    </div>
   </div>
   <p class="dashboard-subtitle">Down Hosts</p>
   {% if hosts %}

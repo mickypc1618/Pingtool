@@ -44,6 +44,11 @@ main {
   margin-bottom: 1rem;
 }
 
+.header-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
 .dashboard-subtitle {
   margin-top: 0;
   margin-bottom: 1rem;
@@ -92,6 +97,14 @@ button,
 
 .button-danger:hover {
   background: #b91c1c;
+}
+
+.button-secondary {
+  background: #64748b;
+}
+
+.button-secondary:hover {
+  background: #475569;
 }
 
 .inline-form {

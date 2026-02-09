@@ -199,6 +199,7 @@ def ping_all():
 
 @app.route("/dashboard")
 def dashboard():
+    show_unknown = request.args.get("show_unknown") == "1"
     with get_db_connection() as connection:
         down_hosts = connection.execute(
             """
@@ -210,8 +211,7 @@ def dashboard():
     formatted_hosts = []
     for host in down_hosts:
         last_success_at = host["last_success_at"]
-        last_checked_at = host["last_checked_at"]
-        reference_time = last_success_at or last_checked_at
+        reference_time = last_success_at
         downtime_seconds = None
         if reference_time:
             try:
@@ -220,6 +220,8 @@ def dashboard():
                 )
             except ValueError:
                 downtime_seconds = None
+        if downtime_seconds is None and not show_unknown:
+            continue
         formatted_hosts.append(
             {
                 "hostname": host["hostname"],
@@ -236,7 +238,9 @@ def dashboard():
             item["downtime_seconds"] or 0,
         )
     )
-    return render_template("dashboard.html", hosts=formatted_hosts)
+    return render_template(
+        "dashboard.html", hosts=formatted_hosts, show_unknown=show_unknown
+    )
 
 
 def background_ping_loop():
