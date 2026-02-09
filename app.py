@@ -1,3 +1,4 @@
+import concurrent.futures
 import os
 import sqlite3
 import subprocess
@@ -60,6 +61,11 @@ def ping_host(ip_address, count=4):
                     received = int(part.split("=")[1].strip())
             break
     return received / count >= 0.5
+
+
+def ping_host_task(payload):
+    host_id, ip_address = payload
+    return host_id, ping_host(ip_address)
 
 
 def update_host_status(host_id, is_up):
@@ -153,14 +159,15 @@ def ping_single(host_id):
 
 def ping_all_hosts():
     with get_db_connection() as connection:
-        host_ids = [row["id"] for row in connection.execute("SELECT id FROM hosts").fetchall()]
-    for host_id in host_ids:
-        with get_db_connection() as connection:
-            host = connection.execute(
-                "SELECT ip_address FROM hosts WHERE id = ?", (host_id,)
-            ).fetchone()
-        if host:
-            is_up = ping_host(host["ip_address"])
+        hosts = connection.execute(
+            "SELECT id, ip_address FROM hosts"
+        ).fetchall()
+    if not hosts:
+        return
+    payloads = [(host["id"], host["ip_address"]) for host in hosts]
+    max_workers = min(4, os.cpu_count() or 1, len(payloads))
+    with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
+        for host_id, is_up in executor.map(ping_host_task, payloads):
             update_host_status(host_id, is_up)
 
 
