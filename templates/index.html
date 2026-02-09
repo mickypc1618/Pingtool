@@ -60,6 +60,9 @@
           <td>{{ host['last_success_at'] or '—' }}</td>
           <td>
             <a class="button" href="{{ url_for('ping_single', host_id=host['id']) }}">Ping</a>
+            <form method="post" action="{{ url_for('delete_host', host_id=host['id']) }}" class="inline-form">
+              <button type="submit" class="button button-danger">Delete</button>
+            </form>
           </td>
         </tr>
         {% endfor %}

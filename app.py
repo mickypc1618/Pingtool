@@ -157,6 +157,14 @@ def ping_single(host_id):
     return redirect(url_for("index"))
 
 
+@app.route("/hosts/<int:host_id>/delete", methods=["POST"])
+def delete_host(host_id):
+    with get_db_connection() as connection:
+        connection.execute("DELETE FROM hosts WHERE id = ?", (host_id,))
+        connection.commit()
+    return redirect(url_for("index"))
+
+
 def ping_all_hosts():
     with get_db_connection() as connection:
         hosts = connection.execute(

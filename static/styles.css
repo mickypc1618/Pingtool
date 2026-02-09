@@ -86,6 +86,19 @@ button,
   cursor: pointer;
 }
 
+.button-danger {
+  background: #dc2626;
+}
+
+.button-danger:hover {
+  background: #b91c1c;
+}
+
+.inline-form {
+  display: inline-block;
+  margin-left: 0.5rem;
+}
+
 button:hover,
 .button:hover {
   background: #1d4ed8;
