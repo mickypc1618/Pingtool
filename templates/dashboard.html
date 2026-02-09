@@ -7,16 +7,26 @@
     <a class="button" href="{{ url_for('ping_all') }}">Refresh Status</a>
   </div>
   {% if hosts %}
-    <div class="down-grid">
-      {% for host in hosts %}
-      <div class="down-card">
-        <h3>{{ host['hostname'] }}</h3>
-        <p><strong>IP:</strong> {{ host['ip_address'] }}</p>
-        <p><strong>Last Checked:</strong> {{ host['last_checked_at'] or '—' }}</p>
-        <p><strong>Last Success:</strong> {{ host['last_success_at'] or '—' }}</p>
-      </div>
-      {% endfor %}
-    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Hostname</th>
+          <th>IP Address</th>
+          <th>Last Checked</th>
+          <th>Last Success</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for host in hosts %}
+        <tr>
+          <td>{{ host['hostname'] }}</td>
+          <td>{{ host['ip_address'] }}</td>
+          <td>{{ host['last_checked_at'] or '—' }}</td>
+          <td>{{ host['last_success_at'] or '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
   {% else %}
     <p>All hosts are currently reachable.</p>
   {% endif %}
