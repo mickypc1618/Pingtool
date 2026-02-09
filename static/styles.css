@@ -44,6 +44,13 @@ main {
   margin-bottom: 1rem;
 }
 
+.dashboard-subtitle {
+  margin-top: 0;
+  margin-bottom: 1rem;
+  color: #475569;
+  font-weight: 600;
+}
+
 .form-grid {
   display: grid;
   gap: 1rem;
@@ -102,4 +109,36 @@ td {
 .status.down {
   background: #fee2e2;
   color: #991b1b;
+}
+
+.down-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.down-card {
+  background: #fee2e2;
+  border: 1px solid #fecaca;
+  color: #7f1d1d;
+  border-radius: 12px;
+  padding: 1rem;
+  box-shadow: 0 8px 20px rgba(220, 38, 38, 0.15);
+}
+
+.down-card h3 {
+  margin-top: 0;
+  margin-bottom: 0.5rem;
+}
+
+@media (max-width: 1200px) {
+  .down-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 700px) {
+  .down-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }

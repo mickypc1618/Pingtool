@@ -1,6 +1,8 @@
 import os
 import sqlite3
 import subprocess
+import threading
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -37,13 +39,27 @@ def init_db():
         connection.commit()
 
 
-def ping_host(ip_address):
+def ping_host(ip_address, count=4):
     if os.name == "nt":
-        command = ["ping", "-n", "1", "-w", "1000", ip_address]
+        command = ["ping", "-n", str(count), "-w", "1000", ip_address]
     else:
-        command = ["ping", "-c", "1", "-W", "1", ip_address]
+        command = ["ping", "-c", str(count), "-W", "1", ip_address]
     result = subprocess.run(command, capture_output=True, text=True)
-    return result.returncode == 0
+    output = result.stdout + result.stderr
+    received = 0
+    for line in output.splitlines():
+        if "received" in line and "packets transmitted" in line:
+            parts = line.split(",")
+            for part in parts:
+                if "received" in part:
+                    received = int(part.strip().split(" ")[0])
+            break
+        if "Received = " in line:
+            for part in line.split(","):
+                if "Received =" in part:
+                    received = int(part.split("=")[1].strip())
+            break
+    return received / count >= 0.5
 
 
 def update_host_status(host_id, is_up):
@@ -104,8 +120,7 @@ def ping_single(host_id):
     return redirect(url_for("index"))
 
 
-@app.route("/ping_all")
-def ping_all():
+def ping_all_hosts():
     with get_db_connection() as connection:
         host_ids = [row["id"] for row in connection.execute("SELECT id FROM hosts").fetchall()]
     for host_id in host_ids:
@@ -116,6 +131,11 @@ def ping_all():
         if host:
             is_up = ping_host(host["ip_address"])
             update_host_status(host_id, is_up)
+
+
+@app.route("/ping_all")
+def ping_all():
+    ping_all_hosts()
     return redirect(url_for("index"))
 
 
@@ -132,6 +152,20 @@ def dashboard():
     return render_template("dashboard.html", hosts=down_hosts)
 
 
+def background_ping_loop():
+    while True:
+        ping_all_hosts()
+        time.sleep(60)
+
+
+def start_background_pinger():
+    thread = threading.Thread(target=background_ping_loop, daemon=True)
+    thread.start()
+
+
 if __name__ == "__main__":
     init_db()
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    debug = True
+    if os.environ.get("WERKZEUG_RUN_MAIN") == "true" or not debug:
+        start_background_pinger()
+    app.run(host="0.0.0.0", port=5000, debug=debug)

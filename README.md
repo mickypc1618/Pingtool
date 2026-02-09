@@ -23,4 +23,5 @@ Then visit:
 ## Notes
 
 - Ping uses the system `ping` command, so ensure it is available on your host.
+- A background job pings every minute with 4 packets; hosts are marked down if fewer than half respond.
 - Timestamps are stored in UTC ISO-8601 format.
