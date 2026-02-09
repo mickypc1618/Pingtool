@@ -1,0 +1,24 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<section class="card">
+  <div class="section-header">
+    <h2>Down Hosts</h2>
+    <a class="button" href="{{ url_for('ping_all') }}">Refresh Status</a>
+  </div>
+  {% if hosts %}
+    <div class="down-grid">
+      {% for host in hosts %}
+      <div class="down-card">
+        <h3>{{ host['hostname'] }}</h3>
+        <p><strong>IP:</strong> {{ host['ip_address'] }}</p>
+        <p><strong>Last Checked:</strong> {{ host['last_checked_at'] or '—' }}</p>
+        <p><strong>Last Success:</strong> {{ host['last_success_at'] or '—' }}</p>
+      </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p>All hosts are currently reachable.</p>
+  {% endif %}
+</section>
+{% endblock %}
