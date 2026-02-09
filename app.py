@@ -113,6 +113,18 @@ def parse_bulk_hosts(raw_text):
     return hosts
 
 
+def format_duration(seconds):
+    if seconds is None:
+        return "Unknown"
+    if seconds < 60:
+        return f"{seconds}s"
+    minutes, remainder = divmod(seconds, 60)
+    if minutes < 60:
+        return f"{minutes}m {remainder}s"
+    hours, remainder = divmod(minutes, 60)
+    return f"{hours}h {remainder}m"
+
+
 @app.route("/", methods=["GET", "POST"])
 def index():
     if request.method == "POST":
@@ -192,10 +204,39 @@ def dashboard():
             """
             SELECT * FROM hosts
             WHERE last_status = 0
-            ORDER BY hostname
             """
         ).fetchall()
-    return render_template("dashboard.html", hosts=down_hosts)
+    now = datetime.utcnow()
+    formatted_hosts = []
+    for host in down_hosts:
+        last_success_at = host["last_success_at"]
+        last_checked_at = host["last_checked_at"]
+        reference_time = last_success_at or last_checked_at
+        downtime_seconds = None
+        if reference_time:
+            try:
+                downtime_seconds = int(
+                    (now - datetime.fromisoformat(reference_time)).total_seconds()
+                )
+            except ValueError:
+                downtime_seconds = None
+        formatted_hosts.append(
+            {
+                "hostname": host["hostname"],
+                "ip_address": host["ip_address"],
+                "last_checked_at": host["last_checked_at"],
+                "last_success_at": host["last_success_at"],
+                "downtime_seconds": downtime_seconds,
+                "downtime_display": format_duration(downtime_seconds),
+            }
+        )
+    formatted_hosts.sort(
+        key=lambda item: (
+            item["downtime_seconds"] is None,
+            item["downtime_seconds"] or 0,
+        )
+    )
+    return render_template("dashboard.html", hosts=formatted_hosts)
 
 
 def background_ping_loop():
