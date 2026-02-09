@@ -14,6 +14,8 @@ DATA_DIR = BASE_DIR / "data"
 DB_PATH = DATA_DIR / "pingtool.db"
 
 app = Flask(__name__)
+PING_WORKERS = 64
+PING_EXECUTOR = concurrent.futures.ThreadPoolExecutor(max_workers=PING_WORKERS)
 
 
 def get_db_connection():
@@ -185,10 +187,10 @@ def ping_all_hosts():
     if not hosts:
         return
     payloads = [(host["id"], host["ip_address"]) for host in hosts]
-    max_workers = min(4, os.cpu_count() or 1, len(payloads))
-    with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
-        for host_id, is_up in executor.map(ping_host_task, payloads):
-            update_host_status(host_id, is_up)
+    futures = [PING_EXECUTOR.submit(ping_host_task, payload) for payload in payloads]
+    for future in concurrent.futures.as_completed(futures):
+        host_id, is_up = future.result()
+        update_host_status(host_id, is_up)
 
 
 @app.route("/ping_all")
@@ -245,8 +247,10 @@ def dashboard():
 
 def background_ping_loop():
     while True:
+        started_at = time.monotonic()
         ping_all_hosts()
-        time.sleep(60)
+        elapsed = time.monotonic() - started_at
+        time.sleep(max(0, 60 - elapsed))
 
 
 def start_background_pinger():
