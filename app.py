@@ -5,7 +5,7 @@ import sqlite3
 import subprocess
 import threading
 import time
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from flask import Flask, redirect, render_template, request, url_for
@@ -86,13 +86,13 @@ def schedule_next_ping(last_success_at, is_up):
     else:
         base_interval = 3600
     jitter = random.randint(0, max(10, base_interval // 10))
-    return (datetime.utcnow() + timedelta(seconds=base_interval + jitter)).isoformat(
+    return (datetime.now(UTC) + timedelta(seconds=base_interval + jitter)).isoformat(
         timespec="seconds"
     )
 
 
 def update_host_status(host_id, is_up, last_success_at):
-    timestamp = datetime.utcnow().isoformat(timespec="seconds")
+    timestamp = datetime.now(UTC).isoformat(timespec="seconds")
     next_ping_at = schedule_next_ping(last_success_at, is_up)
     with get_db_connection() as connection:
         if is_up:
@@ -141,10 +141,20 @@ def parse_bulk_hosts(raw_text):
 
 def schedule_new_host():
     jitter = random.randint(0, 600)
-    return (datetime.utcnow() + timedelta(seconds=3600 + jitter)).isoformat(
+    return (datetime.now(UTC) + timedelta(seconds=3600 + jitter)).isoformat(
         timespec="seconds"
     )
 
+
+
+
+def parse_db_timestamp(value):
+    if not value:
+        return None
+    parsed = datetime.fromisoformat(value)
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
 
 def format_duration(seconds):
     if seconds is None:
@@ -222,7 +232,7 @@ def delete_host(host_id):
 
 
 def ping_all_hosts():
-    now = datetime.utcnow().isoformat(timespec="seconds")
+    now = datetime.now(UTC).isoformat(timespec="seconds")
     with get_db_connection() as connection:
         hosts = connection.execute(
             """
@@ -258,7 +268,7 @@ def dashboard():
             WHERE last_status = 0
             """
         ).fetchall()
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
     formatted_hosts = []
     for host in down_hosts:
         last_success_at = host["last_success_at"]
@@ -267,7 +277,7 @@ def dashboard():
         if reference_time:
             try:
                 downtime_seconds = int(
-                    (now - datetime.fromisoformat(reference_time)).total_seconds()
+                    (now - parse_db_timestamp(reference_time)).total_seconds()
                 )
             except ValueError:
                 downtime_seconds = None
