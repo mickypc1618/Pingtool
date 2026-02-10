@@ -222,7 +222,13 @@ def index():
 
     with get_db_connection() as connection:
         hosts = connection.execute("SELECT * FROM hosts ORDER BY hostname").fetchall()
-    return render_template("index.html", hosts=hosts, manufacturers=MANUFACTURERS)
+    edit_id = request.args.get("edit_id", type=int)
+    return render_template(
+        "index.html",
+        hosts=hosts,
+        manufacturers=MANUFACTURERS,
+        edit_id=edit_id,
+    )
 
 
 @app.route("/bulk_upload", methods=["POST"])
@@ -261,39 +267,28 @@ def ping_single(host_id):
 
 
 
-@app.route("/hosts/<int:host_id>/edit", methods=["GET", "POST"])
+@app.route("/hosts/<int:host_id>/edit", methods=["POST"])
 def edit_host(host_id):
-    with get_db_connection() as connection:
-        host = connection.execute(
-            "SELECT * FROM hosts WHERE id = ?", (host_id,)
-        ).fetchone()
-    if not host:
-        return redirect(url_for("index"))
+    hostname = request.form.get("hostname", "").strip()
+    ip_address = request.form.get("ip_address", "").strip()
+    manufacturer = request.form.get("manufacturer", "Draytek")
+    web_url = request.form.get("web_url", "").strip() or None
+    if hostname and ip_address:
+        with get_db_connection() as connection:
+            connection.execute(
+                """
+                UPDATE hosts
+                SET hostname = ?,
+                    ip_address = ?,
+                    manufacturer = ?,
+                    web_url = ?
+                WHERE id = ?
+                """,
+                (hostname, ip_address, manufacturer, web_url, host_id),
+            )
+            connection.commit()
+    return redirect(url_for("index"))
 
-    if request.method == "POST":
-        hostname = request.form.get("hostname", "").strip()
-        ip_address = request.form.get("ip_address", "").strip()
-        manufacturer = request.form.get("manufacturer", "Draytek")
-        web_url = request.form.get("web_url", "").strip() or None
-        if hostname and ip_address:
-            with get_db_connection() as connection:
-                connection.execute(
-                    """
-                    UPDATE hosts
-                    SET hostname = ?,
-                        ip_address = ?,
-                        manufacturer = ?,
-                        web_url = ?
-                    WHERE id = ?
-                    """,
-                    (hostname, ip_address, manufacturer, web_url, host_id),
-                )
-                connection.commit()
-        return redirect(url_for("index"))
-
-    return render_template(
-        "edit_host.html", host=host, manufacturers=MANUFACTURERS
-    )
 
 @app.route("/hosts/<int:host_id>/delete", methods=["POST"])
 def delete_host(host_id):

@@ -183,3 +183,16 @@ td {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+
+.inline-edit-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 1.5fr auto;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.inline-edit-actions {
+  display: flex;
+  gap: 0.5rem;
+}

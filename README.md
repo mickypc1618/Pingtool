@@ -33,6 +33,6 @@ Then visit:
 
 ## Manufacturer notes
 
-- **Draytek**: Use `Web URL` proof of life (for example: `https://138.248.139.155:4433/`).
+- **Draytek**: Use `Web URL` proof of life (for example: `https://203.0.113.10:4433/`).
 - **Mikrotik**: Suggested alternative is RouterOS API health checks (API/REST endpoint if enabled), since web login endpoints may not always return deterministic `200` health responses.
 - **TP-Link (Omada)**: Suggested approach is integrating with Omada Controller API for device status rather than only checking a per-device web page.
