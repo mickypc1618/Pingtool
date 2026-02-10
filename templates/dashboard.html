@@ -24,6 +24,8 @@
       <div class="down-card">
         <h3>{{ host['hostname'] }}</h3>
         <p><strong>Down for:</strong> {{ host['downtime_display'] }}</p>
+        <p><strong>Supplier:</strong> {{ host['supplier'] or '—' }}</p>
+        <p><strong>Post Code:</strong> {{ host['post_code'] or '—' }}</p>
       </div>
       {% endfor %}
     </div>

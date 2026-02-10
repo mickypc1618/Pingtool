@@ -36,6 +36,9 @@ def init_db():
                 hostname TEXT NOT NULL,
                 ip_address TEXT NOT NULL,
                 manufacturer TEXT NOT NULL DEFAULT 'Draytek',
+                supplier TEXT,
+                host_type TEXT,
+                post_code TEXT,
                 web_url TEXT,
                 failed_attempts INTEGER NOT NULL DEFAULT 0,
                 last_status INTEGER NOT NULL DEFAULT 0,
@@ -57,6 +60,12 @@ def init_db():
             )
         if "web_url" not in columns:
             connection.execute("ALTER TABLE hosts ADD COLUMN web_url TEXT;")
+        if "supplier" not in columns:
+            connection.execute("ALTER TABLE hosts ADD COLUMN supplier TEXT;")
+        if "host_type" not in columns:
+            connection.execute("ALTER TABLE hosts ADD COLUMN host_type TEXT;")
+        if "post_code" not in columns:
+            connection.execute("ALTER TABLE hosts ADD COLUMN post_code TEXT;")
         if "failed_attempts" not in columns:
             connection.execute(
                 "ALTER TABLE hosts ADD COLUMN failed_attempts INTEGER NOT NULL DEFAULT 0;"
@@ -215,6 +224,9 @@ def index():
         hostname = request.form.get("hostname", "").strip()
         ip_address = request.form.get("ip_address", "").strip()
         manufacturer = request.form.get("manufacturer", "Draytek")
+        supplier = request.form.get("supplier", "").strip() or None
+        host_type = request.form.get("host_type", "").strip() or None
+        post_code = request.form.get("post_code", "").strip() or None
         web_url = request.form.get("web_url", "").strip() or None
         if hostname and ip_address:
             with get_db_connection() as connection:
@@ -224,13 +236,25 @@ def index():
                         hostname,
                         ip_address,
                         manufacturer,
+                        supplier,
+                        host_type,
+                        post_code,
                         web_url,
                         failed_attempts,
                         next_ping_at
                     )
-                    VALUES (?, ?, ?, ?, 0, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)
                     """,
-                    (hostname, ip_address, manufacturer, web_url, schedule_new_host()),
+                    (
+                        hostname,
+                        ip_address,
+                        manufacturer,
+                        supplier,
+                        host_type,
+                        post_code,
+                        web_url,
+                        schedule_new_host(),
+                    ),
                 )
                 host_id = connection.execute("SELECT last_insert_rowid()").fetchone()[0]
                 connection.commit()
@@ -258,18 +282,31 @@ def index():
 def bulk_upload():
     bulk_text = request.form.get("bulk_hosts", "")
     manufacturer = request.form.get("bulk_manufacturer", "Draytek")
+    supplier = request.form.get("bulk_supplier", "").strip() or None
+    host_type = request.form.get("bulk_host_type", "").strip() or None
+    post_code = request.form.get("bulk_post_code", "").strip() or None
     hosts = parse_bulk_hosts(bulk_text)
     if hosts:
         scheduled_hosts = [
-            (hostname, ip_address, manufacturer, None, schedule_new_host())
+            (hostname, ip_address, manufacturer, supplier, host_type, post_code, None, schedule_new_host())
             for hostname, ip_address in hosts
         ]
         with get_db_connection() as connection:
             start_id = connection.execute("SELECT COALESCE(MAX(id), 0) FROM hosts").fetchone()[0]
             connection.executemany(
                 """
-                INSERT INTO hosts (hostname, ip_address, manufacturer, web_url, failed_attempts, next_ping_at)
-                VALUES (?, ?, ?, ?, 0, ?)
+                INSERT INTO hosts (
+                    hostname,
+                    ip_address,
+                    manufacturer,
+                    supplier,
+                    host_type,
+                    post_code,
+                    web_url,
+                    failed_attempts,
+                    next_ping_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)
                 """,
                 scheduled_hosts,
             )
@@ -311,6 +348,9 @@ def edit_host(host_id):
     hostname = request.form.get("hostname", "").strip()
     ip_address = request.form.get("ip_address", "").strip()
     manufacturer = request.form.get("manufacturer", "Draytek")
+    supplier = request.form.get("supplier", "").strip() or None
+    host_type = request.form.get("host_type", "").strip() or None
+    post_code = request.form.get("post_code", "").strip() or None
     web_url = request.form.get("web_url", "").strip() or None
     if hostname and ip_address:
         with get_db_connection() as connection:
@@ -320,10 +360,22 @@ def edit_host(host_id):
                 SET hostname = ?,
                     ip_address = ?,
                     manufacturer = ?,
+                    supplier = ?,
+                    host_type = ?,
+                    post_code = ?,
                     web_url = ?
                 WHERE id = ?
                 """,
-                (hostname, ip_address, manufacturer, web_url, host_id),
+                (
+                    hostname,
+                    ip_address,
+                    manufacturer,
+                    supplier,
+                    host_type,
+                    post_code,
+                    web_url,
+                    host_id,
+                ),
             )
             connection.commit()
     return redirect(url_for("index"))
@@ -342,7 +394,7 @@ def ping_all_hosts():
     with get_db_connection() as connection:
         hosts = connection.execute(
             """
-            SELECT id, hostname, ip_address, manufacturer, web_url, failed_attempts, last_success_at, next_ping_at
+            SELECT id, hostname, ip_address, manufacturer, supplier, host_type, post_code, web_url, failed_attempts, last_success_at, next_ping_at
             FROM hosts
             WHERE next_ping_at IS NULL OR next_ping_at <= ?
             """,
@@ -398,6 +450,8 @@ def dashboard():
             {
                 "hostname": host["hostname"],
                 "ip_address": host["ip_address"],
+                "supplier": host["supplier"],
+                "post_code": host["post_code"],
                 "last_checked_at": host["last_checked_at"],
                 "last_success_at": host["last_success_at"],
                 "downtime_seconds": downtime_seconds,

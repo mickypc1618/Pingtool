@@ -20,6 +20,8 @@ Then visit:
 - `http://localhost:5000/` to add hosts and trigger pings.
 - `http://localhost:5000/dashboard` to view down hosts and last successful ping times.
 
+Host records now include additional metadata: `Supplier`, `Type`, and `Post Code` (available in both single-add and bulk upload forms).
+
 ## Notes
 
 - Ping uses the system `ping` command, so ensure it is available on your host.
