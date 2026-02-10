@@ -265,6 +265,7 @@ def bulk_upload():
             for hostname, ip_address in hosts
         ]
         with get_db_connection() as connection:
+            start_id = connection.execute("SELECT COALESCE(MAX(id), 0) FROM hosts").fetchone()[0]
             connection.executemany(
                 """
                 INSERT INTO hosts (hostname, ip_address, manufacturer, web_url, failed_attempts, next_ping_at)
@@ -273,6 +274,21 @@ def bulk_upload():
                 scheduled_hosts,
             )
             connection.commit()
+
+        with get_db_connection() as connection:
+            new_hosts = connection.execute(
+                "SELECT * FROM hosts WHERE id > ? ORDER BY id",
+                (start_id,),
+            ).fetchall()
+
+        for host in new_hosts:
+            _, is_up = evaluate_host(host)
+            update_host_status(
+                host["id"],
+                is_up,
+                host["last_success_at"],
+                host["failed_attempts"],
+            )
     return redirect(url_for("index"))
 
 
