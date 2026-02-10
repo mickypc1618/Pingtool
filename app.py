@@ -37,6 +37,7 @@ def init_db():
                 ip_address TEXT NOT NULL,
                 manufacturer TEXT NOT NULL DEFAULT 'Draytek',
                 web_url TEXT,
+                failed_attempts INTEGER NOT NULL DEFAULT 0,
                 last_status INTEGER NOT NULL DEFAULT 0,
                 last_checked_at TEXT,
                 last_success_at TEXT,
@@ -56,6 +57,10 @@ def init_db():
             )
         if "web_url" not in columns:
             connection.execute("ALTER TABLE hosts ADD COLUMN web_url TEXT;")
+        if "failed_attempts" not in columns:
+            connection.execute(
+                "ALTER TABLE hosts ADD COLUMN failed_attempts INTEGER NOT NULL DEFAULT 0;"
+            )
         connection.commit()
 
 
@@ -112,10 +117,10 @@ def evaluate_host(host):
     return host["id"], proof_ok
 
 
-def schedule_next_ping(last_success_at, is_up):
+def schedule_next_ping(last_success_at, is_up, failed_attempts):
     if is_up:
         base_interval = 60
-    elif last_success_at:
+    elif last_success_at or failed_attempts < 4:
         base_interval = 60
     else:
         base_interval = 3600
@@ -125,15 +130,17 @@ def schedule_next_ping(last_success_at, is_up):
     )
 
 
-def update_host_status(host_id, is_up, last_success_at):
+def update_host_status(host_id, is_up, last_success_at, failed_attempts):
     timestamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
-    next_ping_at = schedule_next_ping(last_success_at, is_up)
+    new_failed_attempts = 0 if is_up else failed_attempts + (0 if last_success_at else 1)
+    next_ping_at = schedule_next_ping(last_success_at, is_up, new_failed_attempts)
     with get_db_connection() as connection:
         if is_up:
             connection.execute(
                 """
                 UPDATE hosts
                 SET last_status = 1,
+                    failed_attempts = 0,
                     last_checked_at = ?,
                     last_success_at = ?,
                     next_ping_at = ?
@@ -146,11 +153,12 @@ def update_host_status(host_id, is_up, last_success_at):
                 """
                 UPDATE hosts
                 SET last_status = 0,
+                    failed_attempts = ?,
                     last_checked_at = ?,
                     next_ping_at = ?
                 WHERE id = ?
                 """,
-                (timestamp, next_ping_at, host_id),
+                (new_failed_attempts, timestamp, next_ping_at, host_id),
             )
         connection.commit()
 
@@ -174,8 +182,8 @@ def parse_bulk_hosts(raw_text):
 
 
 def schedule_new_host():
-    jitter = random.randint(0, 600)
-    return (datetime.now(timezone.utc) + timedelta(seconds=3600 + jitter)).isoformat(
+    jitter = random.randint(5, 20)
+    return (datetime.now(timezone.utc) + timedelta(seconds=jitter)).isoformat(
         timespec="seconds"
     )
 
@@ -212,12 +220,27 @@ def index():
             with get_db_connection() as connection:
                 connection.execute(
                     """
-                    INSERT INTO hosts (hostname, ip_address, manufacturer, web_url, next_ping_at)
-                    VALUES (?, ?, ?, ?, ?)
+                    INSERT INTO hosts (
+                        hostname,
+                        ip_address,
+                        manufacturer,
+                        web_url,
+                        failed_attempts,
+                        next_ping_at
+                    )
+                    VALUES (?, ?, ?, ?, 0, ?)
                     """,
                     (hostname, ip_address, manufacturer, web_url, schedule_new_host()),
                 )
+                host_id = connection.execute("SELECT last_insert_rowid()").fetchone()[0]
                 connection.commit()
+            with get_db_connection() as connection:
+                host = connection.execute(
+                    "SELECT * FROM hosts WHERE id = ?", (host_id,)
+                ).fetchone()
+            if host:
+                _, is_up = evaluate_host(host)
+                update_host_status(host_id, is_up, host["last_success_at"], host["failed_attempts"])
         return redirect(url_for("index"))
 
     with get_db_connection() as connection:
@@ -244,8 +267,8 @@ def bulk_upload():
         with get_db_connection() as connection:
             connection.executemany(
                 """
-                INSERT INTO hosts (hostname, ip_address, manufacturer, web_url, next_ping_at)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO hosts (hostname, ip_address, manufacturer, web_url, failed_attempts, next_ping_at)
+                VALUES (?, ?, ?, ?, 0, ?)
                 """,
                 scheduled_hosts,
             )
@@ -261,7 +284,7 @@ def ping_single(host_id):
         ).fetchone()
     if host:
         _, is_up = evaluate_host(host)
-        update_host_status(host_id, is_up, host["last_success_at"])
+        update_host_status(host_id, is_up, host["last_success_at"], host["failed_attempts"])
     return redirect(url_for("index"))
 
 
@@ -303,7 +326,7 @@ def ping_all_hosts():
     with get_db_connection() as connection:
         hosts = connection.execute(
             """
-            SELECT id, hostname, ip_address, manufacturer, web_url, last_success_at, next_ping_at
+            SELECT id, hostname, ip_address, manufacturer, web_url, failed_attempts, last_success_at, next_ping_at
             FROM hosts
             WHERE next_ping_at IS NULL OR next_ping_at <= ?
             """,
@@ -313,9 +336,15 @@ def ping_all_hosts():
         return
     futures = [PING_EXECUTOR.submit(evaluate_host, host) for host in hosts]
     last_success_map = {host["id"]: host["last_success_at"] for host in hosts}
+    failed_attempts_map = {host["id"]: host["failed_attempts"] for host in hosts}
     for future in concurrent.futures.as_completed(futures):
         host_id, is_up = future.result()
-        update_host_status(host_id, is_up, last_success_map.get(host_id))
+        update_host_status(
+            host_id,
+            is_up,
+            last_success_map.get(host_id),
+            failed_attempts_map.get(host_id, 0),
+        )
 
 
 @app.route("/ping_all")

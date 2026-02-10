@@ -23,11 +23,13 @@ Then visit:
 ## Notes
 
 - Ping uses the system `ping` command, so ensure it is available on your host.
-- Hosts have three statuses:
+- Hosts have four lifecycle statuses:
+  - `New`: newly added, never successful yet, and fewer than 4 failed checks.
   - `Up`: responds to ping (or proof-of-life fallback if ping fails).
-  - `Down`: no ping response now, but has a historical successful ping.
-  - `Unknown`: has never had a successful ping.
+  - `Down`: no response now, but has a historical successful ping.
+  - `Unknown`: never had a successful ping after 4 failed checks.
 - If ping fails, Pingtool will optionally use a web proof-of-life check (`curl -k`) against the configured `Web URL` and treat HTTP `200` as up.
+- New hosts are checked as soon as possible after creation; if they fail 4 checks they become Unknown.
 - Unknown hosts are scheduled every hour; known hosts are scheduled every minute, with jitter so checks are staggered.
 - Timestamps are stored in UTC ISO-8601 format.
 

@@ -95,7 +95,11 @@
           <td>{{ host['web_url'] or '—' }}</td>
           <td>
             {% if host['last_success_at'] is none %}
-              <span class="status unknown">Unknown</span>
+              {% if host['failed_attempts'] >= 4 %}
+                <span class="status unknown">Unknown</span>
+              {% else %}
+                <span class="status new">New</span>
+              {% endif %}
             {% elif host['last_status'] %}
               <span class="status up">Up</span>
             {% else %}

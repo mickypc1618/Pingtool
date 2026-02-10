@@ -152,6 +152,11 @@ td {
   color: #334155;
 }
 
+.status.new {
+  background: #fef3c7;
+  color: #92400e;
+}
+
 .down-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
