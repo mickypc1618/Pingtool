@@ -50,7 +50,9 @@
           <td>{{ host['hostname'] }}</td>
           <td>{{ host['ip_address'] }}</td>
           <td>
-            {% if host['last_status'] %}
+            {% if host['last_success_at'] is none %}
+              <span class="status unknown">Unknown</span>
+            {% elif host['last_status'] %}
               <span class="status up">Up</span>
             {% else %}
               <span class="status down">Down</span>

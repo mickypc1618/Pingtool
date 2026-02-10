@@ -146,6 +146,11 @@ td {
   color: #991b1b;
 }
 
+.status.unknown {
+  background: #e2e8f0;
+  color: #334155;
+}
+
 .down-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

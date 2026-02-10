@@ -1,10 +1,11 @@
 import concurrent.futures
 import os
+import random
 import sqlite3
 import subprocess
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from flask import Flask, redirect, render_template, request, url_for
@@ -35,10 +36,17 @@ def init_db():
                 ip_address TEXT NOT NULL,
                 last_status INTEGER NOT NULL DEFAULT 0,
                 last_checked_at TEXT,
-                last_success_at TEXT
+                last_success_at TEXT,
+                next_ping_at TEXT
             );
             """
         )
+        columns = {
+            row["name"]
+            for row in connection.execute("PRAGMA table_info(hosts)").fetchall()
+        }
+        if "next_ping_at" not in columns:
+            connection.execute("ALTER TABLE hosts ADD COLUMN next_ping_at TEXT;")
         connection.commit()
 
 
@@ -70,8 +78,22 @@ def ping_host_task(payload):
     return host_id, ping_host(ip_address)
 
 
-def update_host_status(host_id, is_up):
+def schedule_next_ping(last_success_at, is_up):
+    if is_up:
+        base_interval = 60
+    elif last_success_at:
+        base_interval = 60
+    else:
+        base_interval = 3600
+    jitter = random.randint(0, max(10, base_interval // 10))
+    return (datetime.utcnow() + timedelta(seconds=base_interval + jitter)).isoformat(
+        timespec="seconds"
+    )
+
+
+def update_host_status(host_id, is_up, last_success_at):
     timestamp = datetime.utcnow().isoformat(timespec="seconds")
+    next_ping_at = schedule_next_ping(last_success_at, is_up)
     with get_db_connection() as connection:
         if is_up:
             connection.execute(
@@ -79,20 +101,22 @@ def update_host_status(host_id, is_up):
                 UPDATE hosts
                 SET last_status = 1,
                     last_checked_at = ?,
-                    last_success_at = ?
+                    last_success_at = ?,
+                    next_ping_at = ?
                 WHERE id = ?
                 """,
-                (timestamp, timestamp, host_id),
+                (timestamp, timestamp, next_ping_at, host_id),
             )
         else:
             connection.execute(
                 """
                 UPDATE hosts
                 SET last_status = 0,
-                    last_checked_at = ?
+                    last_checked_at = ?,
+                    next_ping_at = ?
                 WHERE id = ?
                 """,
-                (timestamp, host_id),
+                (timestamp, next_ping_at, host_id),
             )
         connection.commit()
 
@@ -115,9 +139,16 @@ def parse_bulk_hosts(raw_text):
     return hosts
 
 
+def schedule_new_host():
+    jitter = random.randint(0, 600)
+    return (datetime.utcnow() + timedelta(seconds=3600 + jitter)).isoformat(
+        timespec="seconds"
+    )
+
+
 def format_duration(seconds):
     if seconds is None:
-        return "Unknown"
+        return "No successful ping yet"
     if seconds < 60:
         return f"{seconds}s"
     minutes, remainder = divmod(seconds, 60)
@@ -135,8 +166,11 @@ def index():
         if hostname and ip_address:
             with get_db_connection() as connection:
                 connection.execute(
-                    "INSERT INTO hosts (hostname, ip_address) VALUES (?, ?)",
-                    (hostname, ip_address),
+                    """
+                    INSERT INTO hosts (hostname, ip_address, next_ping_at)
+                    VALUES (?, ?, ?)
+                    """,
+                    (hostname, ip_address, schedule_new_host()),
                 )
                 connection.commit()
         return redirect(url_for("index"))
@@ -151,9 +185,17 @@ def bulk_upload():
     bulk_text = request.form.get("bulk_hosts", "")
     hosts = parse_bulk_hosts(bulk_text)
     if hosts:
+        scheduled_hosts = [
+            (hostname, ip_address, schedule_new_host())
+            for hostname, ip_address in hosts
+        ]
         with get_db_connection() as connection:
             connection.executemany(
-                "INSERT INTO hosts (hostname, ip_address) VALUES (?, ?)", hosts
+                """
+                INSERT INTO hosts (hostname, ip_address, next_ping_at)
+                VALUES (?, ?, ?)
+                """,
+                scheduled_hosts,
             )
             connection.commit()
     return redirect(url_for("index"))
@@ -167,7 +209,7 @@ def ping_single(host_id):
         ).fetchone()
     if host:
         is_up = ping_host(host["ip_address"])
-        update_host_status(host_id, is_up)
+        update_host_status(host_id, is_up, host["last_success_at"])
     return redirect(url_for("index"))
 
 
@@ -180,17 +222,24 @@ def delete_host(host_id):
 
 
 def ping_all_hosts():
+    now = datetime.utcnow().isoformat(timespec="seconds")
     with get_db_connection() as connection:
         hosts = connection.execute(
-            "SELECT id, ip_address FROM hosts"
+            """
+            SELECT id, ip_address, last_success_at, next_ping_at
+            FROM hosts
+            WHERE next_ping_at IS NULL OR next_ping_at <= ?
+            """,
+            (now,),
         ).fetchall()
     if not hosts:
         return
     payloads = [(host["id"], host["ip_address"]) for host in hosts]
+    last_success_map = {host["id"]: host["last_success_at"] for host in hosts}
     futures = [PING_EXECUTOR.submit(ping_host_task, payload) for payload in payloads]
     for future in concurrent.futures.as_completed(futures):
         host_id, is_up = future.result()
-        update_host_status(host_id, is_up)
+        update_host_status(host_id, is_up, last_success_map.get(host_id))
 
 
 @app.route("/ping_all")
