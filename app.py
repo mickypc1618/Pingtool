@@ -178,15 +178,25 @@ def parse_bulk_hosts(raw_text):
         cleaned = line.strip()
         if not cleaned:
             continue
+
+        # CSV format: hostname,ip_address[,post_code]
         if "," in cleaned:
-            parts = [part.strip() for part in cleaned.split(",", 1)]
+            parts = [part.strip() for part in cleaned.split(",")]
+            if len(parts) < 2:
+                continue
+            hostname = parts[0]
+            ip_address = parts[1]
+            post_code = parts[2] if len(parts) >= 3 and parts[2] else None
         else:
+            # Fallback format: "hostname ip_address" (no per-host postcode)
             parts = cleaned.split(None, 1)
-        if len(parts) != 2:
-            continue
-        hostname, ip_address = parts
+            if len(parts) != 2:
+                continue
+            hostname, ip_address = parts
+            post_code = None
+
         if hostname and ip_address:
-            hosts.append((hostname, ip_address))
+            hosts.append((hostname, ip_address, post_code))
     return hosts
 
 
@@ -288,8 +298,8 @@ def bulk_upload():
     hosts = parse_bulk_hosts(bulk_text)
     if hosts:
         scheduled_hosts = [
-            (hostname, ip_address, manufacturer, supplier, host_type, post_code, None, schedule_new_host())
-            for hostname, ip_address in hosts
+            (hostname, ip_address, manufacturer, supplier, host_type, line_post_code or post_code, None, schedule_new_host())
+            for hostname, ip_address, line_post_code in hosts
         ]
         with get_db_connection() as connection:
             start_id = connection.execute("SELECT COALESCE(MAX(id), 0) FROM hosts").fetchone()[0]
@@ -380,6 +390,74 @@ def edit_host(host_id):
             connection.commit()
     return redirect(url_for("index"))
 
+
+@app.route("/hosts/bulk_edit", methods=["POST"])
+def bulk_edit_hosts():
+    selected_ids = [
+        int(host_id)
+        for host_id in request.form.getlist("host_ids")
+        if host_id.isdigit()
+    ]
+    if not selected_ids:
+        return redirect(url_for("index"))
+
+    apply_all = request.form.get("apply_all") == "1"
+    manufacturer = request.form.get("bulk_edit_manufacturer", "").strip()
+    supplier = request.form.get("bulk_edit_supplier", "").strip()
+    host_type = request.form.get("bulk_edit_host_type", "").strip()
+
+    if apply_all:
+        where_clause = ""
+        params = []
+    else:
+        placeholders = ",".join(["?"] * len(selected_ids))
+        where_clause = f" WHERE id IN ({placeholders})"
+        params = selected_ids
+
+    updates = []
+    values = []
+    if manufacturer:
+        updates.append("manufacturer = ?")
+        values.append(manufacturer)
+    if supplier:
+        updates.append("supplier = ?")
+        values.append(supplier)
+    if host_type:
+        updates.append("host_type = ?")
+        values.append(host_type)
+
+    if updates:
+        query = "UPDATE hosts SET " + ", ".join(updates) + where_clause
+        with get_db_connection() as connection:
+            connection.execute(query, tuple(values + params))
+            connection.commit()
+
+    return redirect(url_for("index"))
+
+
+
+
+@app.route("/hosts/bulk_delete", methods=["POST"])
+def bulk_delete_hosts():
+    selected_ids = [
+        int(host_id)
+        for host_id in request.form.getlist("host_ids")
+        if host_id.isdigit()
+    ]
+    apply_all = request.form.get("apply_all") == "1"
+
+    with get_db_connection() as connection:
+        if apply_all:
+            connection.execute("DELETE FROM hosts")
+        elif selected_ids:
+            placeholders = ",".join(["?"] * len(selected_ids))
+            connection.execute(
+                f"DELETE FROM hosts WHERE id IN ({placeholders})",
+                selected_ids,
+            )
+        connection.commit()
+
+    return redirect(url_for("index"))
 
 @app.route("/hosts/<int:host_id>/delete", methods=["POST"])
 def delete_host(host_id):

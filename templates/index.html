@@ -44,8 +44,8 @@
   <h2>Bulk Upload Hosts</h2>
   <form method="post" action="{{ url_for('bulk_upload') }}" class="form-grid">
     <label>
-      Enter one host per line (hostname,IP or hostname IP)
-      <textarea name="bulk_hosts" rows="6" placeholder="router-1,203.0.113.10"></textarea>
+      Enter one host per line (hostname,IP,PostCode). PostCode is per-host in CSV
+      <textarea name="bulk_hosts" rows="6" placeholder="router-1,203.0.113.10,AB12 3CD"></textarea>
     </label>
     <label>
       Manufacturer for uploaded hosts
@@ -76,10 +76,38 @@
     <h2>Hosts</h2>
     <a class="button" href="{{ url_for('ping_all') }}">Ping All</a>
   </div>
+  <form id="bulk-edit-form" method="post" action="{{ url_for('bulk_edit_hosts') }}" class="bulk-edit-form">
+    <label>
+      <input type="checkbox" name="apply_all" value="1">
+      Apply to all hosts
+    </label>
+    <label>
+      Manufacturer
+      <select name="bulk_edit_manufacturer">
+        <option value="">No change</option>
+        {% for manufacturer in manufacturers %}
+          <option value="{{ manufacturer }}">{{ manufacturer }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>
+      Supplier
+      <input type="text" name="bulk_edit_supplier" placeholder="No change">
+    </label>
+    <label>
+      Type
+      <input type="text" name="bulk_edit_host_type" placeholder="No change">
+    </label>
+    <div class="bulk-form-actions">
+      <button type="submit">Bulk Update Selected</button>
+      <button type="submit" formaction="{{ url_for('bulk_delete_hosts') }}" class="button button-danger">Bulk Delete Selected</button>
+    </div>
+  </form>
   {% if hosts %}
     <table>
       <thead>
         <tr>
+          <th>Select</th>
           <th>Hostname</th>
           <th>IP Address</th>
           <th>Manufacturer</th>
@@ -97,8 +125,9 @@
         {% for host in hosts %}
         {% if edit_id == host['id'] %}
         <tr>
-          <td colspan="11">
+          <td colspan="12">
             <form method="post" action="{{ url_for('edit_host', host_id=host['id']) }}" class="inline-edit-grid">
+              <input type="hidden" name="host_ids" value="{{ host['id'] }}">
               <input type="text" name="hostname" value="{{ host['hostname'] }}" required>
               <input type="text" name="ip_address" value="{{ host['ip_address'] }}" required>
               <select name="manufacturer" required>
@@ -119,6 +148,7 @@
         </tr>
         {% else %}
         <tr>
+          <td><input type="checkbox" form="bulk-edit-form" name="host_ids" value="{{ host['id'] }}"></td>
           <td>{{ host['hostname'] }}</td>
           <td>{{ host['ip_address'] }}</td>
           <td>{{ host['manufacturer'] }}</td>
