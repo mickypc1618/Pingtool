@@ -1,0 +1,77 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<section class="card">
+  <h2>Add Host</h2>
+  <form method="post" class="form-grid">
+    <label>
+      Hostname
+      <input type="text" name="hostname" required>
+    </label>
+    <label>
+      IP Address
+      <input type="text" name="ip_address" required>
+    </label>
+    <button type="submit">Save Host</button>
+  </form>
+</section>
+
+<section class="card">
+  <h2>Bulk Upload Hosts</h2>
+  <form method="post" action="{{ url_for('bulk_upload') }}" class="form-grid">
+    <label>
+      Enter one host per line (hostname,IP or hostname IP)
+      <textarea name="bulk_hosts" rows="6" placeholder="router-1,10.0.0.1"></textarea>
+    </label>
+    <button type="submit">Upload Hosts</button>
+  </form>
+</section>
+
+<section class="card">
+  <div class="section-header">
+    <h2>Hosts</h2>
+    <a class="button" href="{{ url_for('ping_all') }}">Ping All</a>
+  </div>
+  {% if hosts %}
+    <table>
+      <thead>
+        <tr>
+          <th>Hostname</th>
+          <th>IP Address</th>
+          <th>Status</th>
+          <th>Last Checked</th>
+          <th>Last Success</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for host in hosts %}
+        <tr>
+          <td>{{ host['hostname'] }}</td>
+          <td>{{ host['ip_address'] }}</td>
+          <td>
+            {% if host['last_success_at'] is none %}
+              <span class="status unknown">Unknown</span>
+            {% elif host['last_status'] %}
+              <span class="status up">Up</span>
+            {% else %}
+              <span class="status down">Down</span>
+            {% endif %}
+          </td>
+          <td>{{ host['last_checked_at'] or '—' }}</td>
+          <td>{{ host['last_success_at'] or '—' }}</td>
+          <td>
+            <a class="button" href="{{ url_for('ping_single', host_id=host['id']) }}">Ping</a>
+            <form method="post" action="{{ url_for('delete_host', host_id=host['id']) }}" class="inline-form">
+              <button type="submit" class="button button-danger">Delete</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p>No hosts added yet.</p>
+  {% endif %}
+</section>
+{% endblock %}
