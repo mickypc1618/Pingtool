@@ -23,5 +23,16 @@ Then visit:
 ## Notes
 
 - Ping uses the system `ping` command, so ensure it is available on your host.
-- A background job pings every minute with 4 packets; hosts are marked down if fewer than half respond.
+- Hosts have three statuses:
+  - `Up`: responds to ping (or proof-of-life fallback if ping fails).
+  - `Down`: no ping response now, but has a historical successful ping.
+  - `Unknown`: has never had a successful ping.
+- If ping fails, Pingtool will optionally use a web proof-of-life check (`curl -k`) against the configured `Web URL` and treat HTTP `200` as up.
+- Unknown hosts are scheduled every hour; known hosts are scheduled every minute, with jitter so checks are staggered.
 - Timestamps are stored in UTC ISO-8601 format.
+
+## Manufacturer notes
+
+- **Draytek**: Use `Web URL` proof of life (for example: `https://138.248.139.155:4433/`).
+- **Mikrotik**: Suggested alternative is RouterOS API health checks (API/REST endpoint if enabled), since web login endpoints may not always return deterministic `200` health responses.
+- **TP-Link (Omada)**: Suggested approach is integrating with Omada Controller API for device status rather than only checking a per-device web page.

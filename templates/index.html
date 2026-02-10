@@ -12,6 +12,18 @@
       IP Address
       <input type="text" name="ip_address" required>
     </label>
+    <label>
+      Manufacturer
+      <select name="manufacturer" required>
+        {% for manufacturer in manufacturers %}
+          <option value="{{ manufacturer }}">{{ manufacturer }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>
+      Web URL (Proof of Life)
+      <input type="url" name="web_url" placeholder="https://138.248.139.155:4433/">
+    </label>
     <button type="submit">Save Host</button>
   </form>
 </section>
@@ -22,6 +34,14 @@
     <label>
       Enter one host per line (hostname,IP or hostname IP)
       <textarea name="bulk_hosts" rows="6" placeholder="router-1,10.0.0.1"></textarea>
+    </label>
+    <label>
+      Manufacturer for uploaded hosts
+      <select name="bulk_manufacturer" required>
+        {% for manufacturer in manufacturers %}
+          <option value="{{ manufacturer }}">{{ manufacturer }}</option>
+        {% endfor %}
+      </select>
     </label>
     <button type="submit">Upload Hosts</button>
   </form>
@@ -38,6 +58,8 @@
         <tr>
           <th>Hostname</th>
           <th>IP Address</th>
+          <th>Manufacturer</th>
+          <th>Web URL</th>
           <th>Status</th>
           <th>Last Checked</th>
           <th>Last Success</th>
@@ -49,6 +71,8 @@
         <tr>
           <td>{{ host['hostname'] }}</td>
           <td>{{ host['ip_address'] }}</td>
+          <td>{{ host['manufacturer'] }}</td>
+          <td>{{ host['web_url'] or '—' }}</td>
           <td>
             {% if host['last_success_at'] is none %}
               <span class="status unknown">Unknown</span>

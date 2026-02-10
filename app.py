@@ -5,7 +5,7 @@ import sqlite3
 import subprocess
 import threading
 import time
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from flask import Flask, redirect, render_template, request, url_for
@@ -17,6 +17,7 @@ DB_PATH = DATA_DIR / "pingtool.db"
 app = Flask(__name__)
 PING_WORKERS = 64
 PING_EXECUTOR = concurrent.futures.ThreadPoolExecutor(max_workers=PING_WORKERS)
+MANUFACTURERS = ["Draytek", "Mikrotik", "TP-Link"]
 
 
 def get_db_connection():
@@ -34,6 +35,8 @@ def init_db():
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 hostname TEXT NOT NULL,
                 ip_address TEXT NOT NULL,
+                manufacturer TEXT NOT NULL DEFAULT 'Draytek',
+                web_url TEXT,
                 last_status INTEGER NOT NULL DEFAULT 0,
                 last_checked_at TEXT,
                 last_success_at TEXT,
@@ -47,6 +50,12 @@ def init_db():
         }
         if "next_ping_at" not in columns:
             connection.execute("ALTER TABLE hosts ADD COLUMN next_ping_at TEXT;")
+        if "manufacturer" not in columns:
+            connection.execute(
+                "ALTER TABLE hosts ADD COLUMN manufacturer TEXT NOT NULL DEFAULT 'Draytek';"
+            )
+        if "web_url" not in columns:
+            connection.execute("ALTER TABLE hosts ADD COLUMN web_url TEXT;")
         connection.commit()
 
 
@@ -73,9 +82,34 @@ def ping_host(ip_address, count=4):
     return received / count >= 0.5
 
 
-def ping_host_task(payload):
-    host_id, ip_address = payload
-    return host_id, ping_host(ip_address)
+def check_web_proof_of_life(web_url):
+    if not web_url:
+        return False
+    command = [
+        "curl",
+        "-k",
+        "-L",
+        "--max-time",
+        "10",
+        "--silent",
+        "--output",
+        "/dev/null",
+        "--write-out",
+        "%{http_code}",
+        web_url,
+    ]
+    result = subprocess.run(command, capture_output=True, text=True)
+    if result.returncode != 0:
+        return False
+    return result.stdout.strip() == "200"
+
+
+def evaluate_host(host):
+    ping_ok = ping_host(host["ip_address"])
+    if ping_ok:
+        return host["id"], True
+    proof_ok = check_web_proof_of_life(host["web_url"])
+    return host["id"], proof_ok
 
 
 def schedule_next_ping(last_success_at, is_up):
@@ -86,13 +120,13 @@ def schedule_next_ping(last_success_at, is_up):
     else:
         base_interval = 3600
     jitter = random.randint(0, max(10, base_interval // 10))
-    return (datetime.now(UTC) + timedelta(seconds=base_interval + jitter)).isoformat(
+    return (datetime.now(timezone.utc) + timedelta(seconds=base_interval + jitter)).isoformat(
         timespec="seconds"
     )
 
 
 def update_host_status(host_id, is_up, last_success_at):
-    timestamp = datetime.now(UTC).isoformat(timespec="seconds")
+    timestamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
     next_ping_at = schedule_next_ping(last_success_at, is_up)
     with get_db_connection() as connection:
         if is_up:
@@ -141,11 +175,9 @@ def parse_bulk_hosts(raw_text):
 
 def schedule_new_host():
     jitter = random.randint(0, 600)
-    return (datetime.now(UTC) + timedelta(seconds=3600 + jitter)).isoformat(
+    return (datetime.now(timezone.utc) + timedelta(seconds=3600 + jitter)).isoformat(
         timespec="seconds"
     )
-
-
 
 
 def parse_db_timestamp(value):
@@ -153,8 +185,9 @@ def parse_db_timestamp(value):
         return None
     parsed = datetime.fromisoformat(value)
     if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=UTC)
-    return parsed.astimezone(UTC)
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
 
 def format_duration(seconds):
     if seconds is None:
@@ -173,37 +206,40 @@ def index():
     if request.method == "POST":
         hostname = request.form.get("hostname", "").strip()
         ip_address = request.form.get("ip_address", "").strip()
+        manufacturer = request.form.get("manufacturer", "Draytek")
+        web_url = request.form.get("web_url", "").strip() or None
         if hostname and ip_address:
             with get_db_connection() as connection:
                 connection.execute(
                     """
-                    INSERT INTO hosts (hostname, ip_address, next_ping_at)
-                    VALUES (?, ?, ?)
+                    INSERT INTO hosts (hostname, ip_address, manufacturer, web_url, next_ping_at)
+                    VALUES (?, ?, ?, ?, ?)
                     """,
-                    (hostname, ip_address, schedule_new_host()),
+                    (hostname, ip_address, manufacturer, web_url, schedule_new_host()),
                 )
                 connection.commit()
         return redirect(url_for("index"))
 
     with get_db_connection() as connection:
         hosts = connection.execute("SELECT * FROM hosts ORDER BY hostname").fetchall()
-    return render_template("index.html", hosts=hosts)
+    return render_template("index.html", hosts=hosts, manufacturers=MANUFACTURERS)
 
 
 @app.route("/bulk_upload", methods=["POST"])
 def bulk_upload():
     bulk_text = request.form.get("bulk_hosts", "")
+    manufacturer = request.form.get("bulk_manufacturer", "Draytek")
     hosts = parse_bulk_hosts(bulk_text)
     if hosts:
         scheduled_hosts = [
-            (hostname, ip_address, schedule_new_host())
+            (hostname, ip_address, manufacturer, None, schedule_new_host())
             for hostname, ip_address in hosts
         ]
         with get_db_connection() as connection:
             connection.executemany(
                 """
-                INSERT INTO hosts (hostname, ip_address, next_ping_at)
-                VALUES (?, ?, ?)
+                INSERT INTO hosts (hostname, ip_address, manufacturer, web_url, next_ping_at)
+                VALUES (?, ?, ?, ?, ?)
                 """,
                 scheduled_hosts,
             )
@@ -218,7 +254,7 @@ def ping_single(host_id):
             "SELECT * FROM hosts WHERE id = ?", (host_id,)
         ).fetchone()
     if host:
-        is_up = ping_host(host["ip_address"])
+        _, is_up = evaluate_host(host)
         update_host_status(host_id, is_up, host["last_success_at"])
     return redirect(url_for("index"))
 
@@ -232,11 +268,11 @@ def delete_host(host_id):
 
 
 def ping_all_hosts():
-    now = datetime.now(UTC).isoformat(timespec="seconds")
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
     with get_db_connection() as connection:
         hosts = connection.execute(
             """
-            SELECT id, ip_address, last_success_at, next_ping_at
+            SELECT id, hostname, ip_address, manufacturer, web_url, last_success_at, next_ping_at
             FROM hosts
             WHERE next_ping_at IS NULL OR next_ping_at <= ?
             """,
@@ -244,9 +280,8 @@ def ping_all_hosts():
         ).fetchall()
     if not hosts:
         return
-    payloads = [(host["id"], host["ip_address"]) for host in hosts]
+    futures = [PING_EXECUTOR.submit(evaluate_host, host) for host in hosts]
     last_success_map = {host["id"]: host["last_success_at"] for host in hosts}
-    futures = [PING_EXECUTOR.submit(ping_host_task, payload) for payload in payloads]
     for future in concurrent.futures.as_completed(futures):
         host_id, is_up = future.result()
         update_host_status(host_id, is_up, last_success_map.get(host_id))
@@ -268,7 +303,7 @@ def dashboard():
             WHERE last_status = 0
             """
         ).fetchall()
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     formatted_hosts = []
     for host in down_hosts:
         last_success_at = host["last_success_at"]
@@ -276,9 +311,9 @@ def dashboard():
         downtime_seconds = None
         if reference_time:
             try:
-                downtime_seconds = int(
-                    (now - parse_db_timestamp(reference_time)).total_seconds()
-                )
+                parsed_time = parse_db_timestamp(reference_time)
+                if parsed_time is not None:
+                    downtime_seconds = int((now - parsed_time).total_seconds())
             except ValueError:
                 downtime_seconds = None
         if downtime_seconds is None and not show_unknown:
