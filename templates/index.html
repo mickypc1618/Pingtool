@@ -1,0 +1,160 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<section class="card">
+  <h2>Add Host</h2>
+  <form method="post" class="form-grid">
+    <label>
+      Hostname
+      <input type="text" name="hostname" required>
+    </label>
+    <label>
+      IP Address
+      <input type="text" name="ip_address" placeholder="203.0.113.10" required>
+    </label>
+    <label>
+      Manufacturer
+      <select name="manufacturer" required>
+        {% for manufacturer in manufacturers %}
+          <option value="{{ manufacturer }}">{{ manufacturer }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>
+      Supplier
+      <input type="text" name="supplier" placeholder="Example Supplier Ltd">
+    </label>
+    <label>
+      Type
+      <input type="text" name="host_type" placeholder="Router">
+    </label>
+    <label>
+      Post Code
+      <input type="text" name="post_code" placeholder="AB12 3CD">
+    </label>
+    <label>
+      Web URL (Proof of Life)
+      <input type="url" name="web_url" placeholder="https://203.0.113.10:4433/">
+    </label>
+    <button type="submit">Save Host</button>
+  </form>
+</section>
+
+<section class="card">
+  <h2>Bulk Upload Hosts</h2>
+  <form method="post" action="{{ url_for('bulk_upload') }}" class="form-grid">
+    <label>
+      Enter one host per line (hostname,IP or hostname IP)
+      <textarea name="bulk_hosts" rows="6" placeholder="router-1,203.0.113.10"></textarea>
+    </label>
+    <label>
+      Manufacturer for uploaded hosts
+      <select name="bulk_manufacturer" required>
+        {% for manufacturer in manufacturers %}
+          <option value="{{ manufacturer }}">{{ manufacturer }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>
+      Supplier for uploaded hosts
+      <input type="text" name="bulk_supplier" placeholder="Example Supplier Ltd">
+    </label>
+    <label>
+      Type for uploaded hosts
+      <input type="text" name="bulk_host_type" placeholder="Router">
+    </label>
+    <label>
+      Post Code for uploaded hosts
+      <input type="text" name="bulk_post_code" placeholder="AB12 3CD">
+    </label>
+    <button type="submit">Upload Hosts</button>
+  </form>
+</section>
+
+<section class="card">
+  <div class="section-header">
+    <h2>Hosts</h2>
+    <a class="button" href="{{ url_for('ping_all') }}">Ping All</a>
+  </div>
+  {% if hosts %}
+    <table>
+      <thead>
+        <tr>
+          <th>Hostname</th>
+          <th>IP Address</th>
+          <th>Manufacturer</th>
+          <th>Supplier</th>
+          <th>Type</th>
+          <th>Post Code</th>
+          <th>Web URL</th>
+          <th>Status</th>
+          <th>Last Checked</th>
+          <th>Last Success</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for host in hosts %}
+        {% if edit_id == host['id'] %}
+        <tr>
+          <td colspan="11">
+            <form method="post" action="{{ url_for('edit_host', host_id=host['id']) }}" class="inline-edit-grid">
+              <input type="text" name="hostname" value="{{ host['hostname'] }}" required>
+              <input type="text" name="ip_address" value="{{ host['ip_address'] }}" required>
+              <select name="manufacturer" required>
+                {% for manufacturer in manufacturers %}
+                  <option value="{{ manufacturer }}" {% if host['manufacturer'] == manufacturer %}selected{% endif %}>{{ manufacturer }}</option>
+                {% endfor %}
+              </select>
+              <input type="text" name="supplier" value="{{ host['supplier'] or '' }}" placeholder="Example Supplier Ltd">
+              <input type="text" name="host_type" value="{{ host['host_type'] or '' }}" placeholder="Router">
+              <input type="text" name="post_code" value="{{ host['post_code'] or '' }}" placeholder="AB12 3CD">
+              <input type="url" name="web_url" value="{{ host['web_url'] or '' }}" placeholder="https://203.0.113.10:4433/">
+              <div class="inline-edit-actions">
+                <button type="submit">Save</button>
+                <a class="button button-secondary" href="{{ url_for('index') }}">Cancel</a>
+              </div>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td>{{ host['hostname'] }}</td>
+          <td>{{ host['ip_address'] }}</td>
+          <td>{{ host['manufacturer'] }}</td>
+          <td>{{ host['supplier'] or '—' }}</td>
+          <td>{{ host['host_type'] or '—' }}</td>
+          <td>{{ host['post_code'] or '—' }}</td>
+          <td>{{ host['web_url'] or '—' }}</td>
+          <td>
+            {% if host['last_success_at'] is none %}
+              {% if host['failed_attempts'] >= 4 %}
+                <span class="status unknown">Unknown</span>
+              {% else %}
+                <span class="status new">New</span>
+              {% endif %}
+            {% elif host['last_status'] %}
+              <span class="status up">Up</span>
+            {% else %}
+              <span class="status down">Down</span>
+            {% endif %}
+          </td>
+          <td>{{ host['last_checked_at'] or '—' }}</td>
+          <td>{{ host['last_success_at'] or '—' }}</td>
+          <td>
+            <a class="button" href="{{ url_for('ping_single', host_id=host['id']) }}">Ping</a>
+            <a class="button button-secondary" href="{{ url_for('index', edit_id=host['id']) }}">Edit</a>
+            <form method="post" action="{{ url_for('delete_host', host_id=host['id']) }}" class="inline-form">
+              <button type="submit" class="button button-danger">Delete</button>
+            </form>
+          </td>
+        </tr>
+        {% endif %}
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p>No hosts added yet.</p>
+  {% endif %}
+</section>
+{% endblock %}
