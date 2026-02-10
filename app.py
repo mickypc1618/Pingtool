@@ -259,6 +259,42 @@ def ping_single(host_id):
     return redirect(url_for("index"))
 
 
+
+
+@app.route("/hosts/<int:host_id>/edit", methods=["GET", "POST"])
+def edit_host(host_id):
+    with get_db_connection() as connection:
+        host = connection.execute(
+            "SELECT * FROM hosts WHERE id = ?", (host_id,)
+        ).fetchone()
+    if not host:
+        return redirect(url_for("index"))
+
+    if request.method == "POST":
+        hostname = request.form.get("hostname", "").strip()
+        ip_address = request.form.get("ip_address", "").strip()
+        manufacturer = request.form.get("manufacturer", "Draytek")
+        web_url = request.form.get("web_url", "").strip() or None
+        if hostname and ip_address:
+            with get_db_connection() as connection:
+                connection.execute(
+                    """
+                    UPDATE hosts
+                    SET hostname = ?,
+                        ip_address = ?,
+                        manufacturer = ?,
+                        web_url = ?
+                    WHERE id = ?
+                    """,
+                    (hostname, ip_address, manufacturer, web_url, host_id),
+                )
+                connection.commit()
+        return redirect(url_for("index"))
+
+    return render_template(
+        "edit_host.html", host=host, manufacturers=MANUFACTURERS
+    )
+
 @app.route("/hosts/<int:host_id>/delete", methods=["POST"])
 def delete_host(host_id):
     with get_db_connection() as connection:
