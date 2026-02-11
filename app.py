@@ -561,9 +561,7 @@ def ping_all():
     return redirect(url_for("index"))
 
 
-@app.route("/dashboard")
-def dashboard():
-    show_unknown = request.args.get("show_unknown") == "1"
+def get_down_host_cards(show_unknown):
     with get_db_connection() as connection:
         down_hosts = connection.execute(
             """
@@ -604,8 +602,26 @@ def dashboard():
             item["downtime_seconds"] or 0,
         )
     )
+    return formatted_hosts
+
+
+@app.route("/dashboard")
+def dashboard():
+    show_unknown = request.args.get("show_unknown") == "1"
     return render_template(
-        "dashboard.html", hosts=formatted_hosts, show_unknown=show_unknown
+        "dashboard.html",
+        hosts=get_down_host_cards(show_unknown),
+        show_unknown=show_unknown,
+    )
+
+
+@app.route("/dashboard/plain")
+def dashboard_plain():
+    show_unknown = request.args.get("show_unknown") == "1"
+    return render_template(
+        "dashboard_plain.html",
+        hosts=get_down_host_cards(show_unknown),
+        show_unknown=show_unknown,
     )
 
 
