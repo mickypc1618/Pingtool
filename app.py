@@ -5,6 +5,11 @@ import sqlite3
 import subprocess
 import threading
 import time
+import re
+import shutil
+import ssl
+import urllib.error
+import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -76,11 +81,41 @@ def init_db():
         connection.commit()
 
 
+def resolve_command(binary_name, candidates):
+    found = shutil.which(binary_name)
+    if found:
+        return found
+    for candidate in candidates:
+        if Path(candidate).exists():
+            return candidate
+    return None
+
+
+def extract_received_packets(output):
+    linux_match = re.search(
+        r"(\d+)\s+packets transmitted,\s*(\d+)\s+(?:packets )?received",
+        output,
+        re.IGNORECASE,
+    )
+    if linux_match:
+        return int(linux_match.group(2))
+
+    windows_match = re.search(r"Received\s*=\s*(\d+)", output, re.IGNORECASE)
+    if windows_match:
+        return int(windows_match.group(1))
+
+    return None
+
+
 def ping_host(ip_address, count=4):
+    ping_binary = resolve_command("ping", ["/bin/ping", "/usr/bin/ping", "/sbin/ping"])
+    if not ping_binary:
+        return False
+
     if os.name == "nt":
-        command = ["ping", "-n", str(count), "-w", "1000", ip_address]
+        command = [ping_binary, "-n", str(count), "-w", "1000", ip_address]
     else:
-        command = ["ping", "-c", str(count), "-W", "1", ip_address]
+        command = [ping_binary, "-c", str(count), "-W", "2", ip_address]
 
     try:
         result = subprocess.run(command, capture_output=True, text=True)
@@ -88,23 +123,10 @@ def ping_host(ip_address, count=4):
         return False
 
     output = result.stdout + result.stderr
-    received = 0
-    for line in output.splitlines():
-        if "received" in line and "packets transmitted" in line:
-            parts = line.split(",")
-            for part in parts:
-                if "received" in part:
-                    token = part.strip().split(" ")[0]
-                    if token.isdigit():
-                        received = int(token)
-            break
-        if "Received = " in line:
-            for part in line.split(","):
-                if "Received =" in part:
-                    value = part.split("=")[1].strip()
-                    if value.isdigit():
-                        received = int(value)
-            break
+    received = extract_received_packets(output)
+    if received is None:
+        # Fallback for uncommon ping output formats.
+        return result.returncode == 0
 
     return received / count >= 0.5
 
@@ -112,8 +134,28 @@ def ping_host(ip_address, count=4):
 def check_web_proof_of_life(web_url):
     if not web_url:
         return False
+
+    # Prefer Python stdlib HTTP check so we do not depend on curl being installed.
+    try:
+        request = urllib.request.Request(
+            web_url,
+            method="HEAD",
+            headers={"User-Agent": "Pingtool/1.0"},
+        )
+        context = ssl._create_unverified_context()
+        with urllib.request.urlopen(request, timeout=10, context=context) as response:
+            return response.status == 200
+    except urllib.error.HTTPError as error:
+        return error.code == 200
+    except Exception:
+        pass
+
+    curl_binary = resolve_command("curl", ["/usr/bin/curl", "/bin/curl"])
+    if not curl_binary:
+        return False
+
     command = [
-        "curl",
+        curl_binary,
         "-k",
         "-L",
         "--max-time",
