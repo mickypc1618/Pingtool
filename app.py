@@ -81,7 +81,12 @@ def ping_host(ip_address, count=4):
         command = ["ping", "-n", str(count), "-w", "1000", ip_address]
     else:
         command = ["ping", "-c", str(count), "-W", "1", ip_address]
-    result = subprocess.run(command, capture_output=True, text=True)
+
+    try:
+        result = subprocess.run(command, capture_output=True, text=True)
+    except OSError:
+        return False
+
     output = result.stdout + result.stderr
     received = 0
     for line in output.splitlines():
@@ -89,13 +94,18 @@ def ping_host(ip_address, count=4):
             parts = line.split(",")
             for part in parts:
                 if "received" in part:
-                    received = int(part.strip().split(" ")[0])
+                    token = part.strip().split(" ")[0]
+                    if token.isdigit():
+                        received = int(token)
             break
         if "Received = " in line:
             for part in line.split(","):
                 if "Received =" in part:
-                    received = int(part.split("=")[1].strip())
+                    value = part.split("=")[1].strip()
+                    if value.isdigit():
+                        received = int(value)
             break
+
     return received / count >= 0.5
 
 
@@ -115,7 +125,10 @@ def check_web_proof_of_life(web_url):
         "%{http_code}",
         web_url,
     ]
-    result = subprocess.run(command, capture_output=True, text=True)
+    try:
+        result = subprocess.run(command, capture_output=True, text=True)
+    except OSError:
+        return False
     if result.returncode != 0:
         return False
     return result.stdout.strip() == "200"
@@ -488,7 +501,10 @@ def ping_all_hosts():
     last_success_map = {host["id"]: host["last_success_at"] for host in hosts}
     failed_attempts_map = {host["id"]: (host["failed_attempts"] or 0) for host in hosts}
     for future in concurrent.futures.as_completed(futures):
-        host_id, is_up = future.result()
+        try:
+            host_id, is_up = future.result()
+        except Exception:
+            continue
         update_host_status(
             host_id,
             is_up,
