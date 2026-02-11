@@ -72,6 +72,7 @@ def init_db():
             connection.execute(
                 "ALTER TABLE hosts ADD COLUMN failed_attempts INTEGER NOT NULL DEFAULT 0;"
             )
+        connection.execute("UPDATE hosts SET failed_attempts = 0 WHERE failed_attempts IS NULL")
         connection.commit()
 
 
@@ -143,7 +144,8 @@ def schedule_next_ping(last_success_at, is_up, failed_attempts):
 
 def update_host_status(host_id, is_up, last_success_at, failed_attempts):
     timestamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
-    new_failed_attempts = 0 if is_up else failed_attempts + (0 if last_success_at else 1)
+    safe_failed_attempts = failed_attempts or 0
+    new_failed_attempts = 0 if is_up else safe_failed_attempts + (0 if last_success_at else 1)
     next_ping_at = schedule_next_ping(last_success_at, is_up, new_failed_attempts)
     with get_db_connection() as connection:
         if is_up:
@@ -276,7 +278,7 @@ def index():
                 ).fetchone()
             if host:
                 _, is_up = evaluate_host(host)
-                update_host_status(host_id, is_up, host["last_success_at"], host["failed_attempts"])
+                update_host_status(host_id, is_up, host["last_success_at"], host["failed_attempts"] or 0)
         return redirect(url_for("index"))
 
     with get_db_connection() as connection:
@@ -349,7 +351,7 @@ def ping_single(host_id):
         ).fetchone()
     if host:
         _, is_up = evaluate_host(host)
-        update_host_status(host_id, is_up, host["last_success_at"], host["failed_attempts"])
+        update_host_status(host_id, is_up, host["last_success_at"], host["failed_attempts"] or 0)
     return redirect(url_for("index"))
 
 
@@ -484,7 +486,7 @@ def ping_all_hosts():
         return
     futures = [PING_EXECUTOR.submit(evaluate_host, host) for host in hosts]
     last_success_map = {host["id"]: host["last_success_at"] for host in hosts}
-    failed_attempts_map = {host["id"]: host["failed_attempts"] for host in hosts}
+    failed_attempts_map = {host["id"]: (host["failed_attempts"] or 0) for host in hosts}
     for future in concurrent.futures.as_completed(futures):
         host_id, is_up = future.result()
         update_host_status(
