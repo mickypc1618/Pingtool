@@ -1,0 +1,33 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<section class="card">
+  <div class="section-header">
+    <h2>Edit Host</h2>
+    <a class="button button-secondary" href="{{ url_for('index') }}">Back</a>
+  </div>
+  <form method="post" class="form-grid">
+    <label>
+      Hostname
+      <input type="text" name="hostname" value="{{ host['hostname'] }}" required>
+    </label>
+    <label>
+      IP Address
+      <input type="text" name="ip_address" value="{{ host['ip_address'] }}" required>
+    </label>
+    <label>
+      Manufacturer
+      <select name="manufacturer" required>
+        {% for manufacturer in manufacturers %}
+          <option value="{{ manufacturer }}" {% if host['manufacturer'] == manufacturer %}selected{% endif %}>{{ manufacturer }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>
+      Web URL (Proof of Life)
+      <input type="url" name="web_url" value="{{ host['web_url'] or '' }}" placeholder="https://138.248.139.155:4433/">
+    </label>
+    <button type="submit">Save Changes</button>
+  </form>
+</section>
+{% endblock %}
