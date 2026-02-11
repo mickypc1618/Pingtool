@@ -16,6 +16,8 @@ DB_PATH = DATA_DIR / "pingtool.db"
 
 app = Flask(__name__)
 PING_WORKERS = 64
+BACKGROUND_STARTED = False
+BACKGROUND_LOCK = threading.Lock()
 PING_EXECUTOR = concurrent.futures.ThreadPoolExecutor(max_workers=PING_WORKERS)
 MANUFACTURERS = ["Draytek", "Mikrotik", "TP-Link"]
 
@@ -556,13 +558,22 @@ def background_ping_loop():
 
 
 def start_background_pinger():
-    thread = threading.Thread(target=background_ping_loop, daemon=True)
-    thread.start()
+    global BACKGROUND_STARTED
+    with BACKGROUND_LOCK:
+        if BACKGROUND_STARTED:
+            return
+        thread = threading.Thread(target=background_ping_loop, daemon=True)
+        thread.start()
+        BACKGROUND_STARTED = True
+
+
+def boot_application(start_background=True):
+    init_db()
+    if start_background:
+        start_background_pinger()
 
 
 if __name__ == "__main__":
-    init_db()
-    debug = True
-    if os.environ.get("WERKZEUG_RUN_MAIN") == "true" or not debug:
-        start_background_pinger()
-    app.run(host="0.0.0.0", port=5000, debug=debug)
+    debug = os.environ.get("FLASK_DEBUG", "0") == "1"
+    boot_application(start_background=(os.environ.get("WERKZEUG_RUN_MAIN") == "true" or not debug))
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", "5000")), debug=debug)

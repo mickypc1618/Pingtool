@@ -10,7 +10,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-## Run
+## Development run
 
 ```bash
 python app.py
@@ -21,6 +21,43 @@ Then visit:
 - `http://localhost:5000/dashboard` to view down hosts and last successful ping times.
 
 Host records now include additional metadata: `Supplier`, `Type`, and `Post Code` (available in both single-add and bulk upload forms).
+
+## Production run (WSGI)
+
+Use Gunicorn with the provided WSGI entrypoint:
+
+```bash
+gunicorn --bind 0.0.0.0:5000 --workers 1 --threads 8 wsgi:application
+```
+
+### Optional systemd service
+
+Create `/etc/systemd/system/pingtool.service`:
+
+```ini
+[Unit]
+Description=Pingtool Gunicorn Service
+After=network.target
+
+[Service]
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/Pingtool
+Environment="PATH=/opt/Pingtool/.venv/bin"
+ExecStart=/opt/Pingtool/.venv/bin/gunicorn --bind 0.0.0.0:5000 --workers 1 --threads 8 wsgi:application
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Then enable and start:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable pingtool
+sudo systemctl start pingtool
+```
 
 ## Notes
 
