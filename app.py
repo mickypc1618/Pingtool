@@ -45,6 +45,64 @@ def status_class_from_text(raw_status):
     return "neutral"
 
 
+def vmware_dashboard_status(raw_status):
+    value = str(raw_status or "").strip().lower()
+    if any(word in value for word in ["red", "critical", "down", "offline", "disconnected", "not responding"]):
+        return "Red"
+    if any(word in value for word in ["yellow", "warning", "degraded", "amber", "orange"]):
+        return "Yellow"
+    if any(word in value for word in ["green", "up", "online", "connected", "ok", "normal", "clear"]):
+        return "Green"
+    return "Unknown"
+
+
+def parse_vmware_alarm_string(text):
+    content = str(text or "").strip()
+    compact = re.sub(r"\s+", " ", content)
+
+    lead_match = re.match(
+        r"^Alarm\s+(.+?)\s+on\s+([^:]+):\s*(.+)$",
+        compact,
+        flags=re.IGNORECASE,
+    )
+
+    if not lead_match:
+        return {
+            "key": "VMware Alarm",
+            "status": "Unknown",
+            "message": content or "VMware alarm received (unparsed format)",
+            "status_class": "neutral",
+        }
+
+    alarm_name = lead_match.group(1).strip()
+    tail = lead_match.group(3).strip()
+    status_match = re.search(r"\bstatus\s*[=:]\s*([^,;]+)", tail, flags=re.IGNORECASE)
+    raw_status = status_match.group(1).strip() if status_match else "Unknown"
+
+    key = re.sub(r"\s+status\s*[=:].*$", "", tail, flags=re.IGNORECASE).strip() or "VMware Alarm"
+    dashboard_status = vmware_dashboard_status(raw_status)
+    status_class = status_class_from_text(f"{dashboard_status} {raw_status}")
+
+    return {
+        "key": key,
+        "status": dashboard_status,
+        "message": f"{alarm_name} on {key}: {dashboard_status}",
+        "status_class": status_class,
+    }
+
+
+def parse_vmware_payload(req):
+    payload = req.get_json(silent=True)
+    if isinstance(payload, dict):
+        return str(payload.get("text") or payload.get("message") or payload.get("body") or "")
+
+    form_body = req.form.get("body") if req.form else ""
+    if form_body:
+        return str(form_body)
+
+    return req.get_data(as_text=True)
+
+
 def require_webhook_token(req):
     token = (
         req.args.get("token")
@@ -703,19 +761,16 @@ def webhook_vmware():
     if not require_webhook_token(request):
         return {"ok": False, "error": "Unauthorized"}, 401
 
-    payload = request.get_json(silent=True)
-    text_body = ""
-    if isinstance(payload, dict):
-        text_body = str(payload.get("text") or payload.get("message") or payload)
-    else:
-        text_body = request.get_data(as_text=True)
+    text_body = parse_vmware_payload(request)
+    parsed = parse_vmware_alarm_string(text_body)
 
-    key = "VMware Alarm"
-    status = "Unknown"
-    message = text_body.strip() or "VMware webhook received"
-    status_class = status_class_from_text(message)
-
-    broadcast_update(key, status, message, "VMware", status_class)
+    broadcast_update(
+        parsed["key"],
+        parsed["status"],
+        parsed["message"],
+        "VMware",
+        parsed["status_class"],
+    )
     return {"ok": True}
 
 
