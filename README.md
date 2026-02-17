@@ -59,6 +59,29 @@ sudo systemctl enable pingtool
 sudo systemctl start pingtool
 ```
 
+
+## Webhook integration
+
+The app now includes webhook endpoints and a live alerts page with the same visual style as the rest of Pingtool.
+
+- Live alerts UI: `/alerts`
+- State API: `/api/alerts/state`
+- Webhook endpoints:
+  - `POST /webhook/vmware`
+  - `POST /webhook/omada`
+  - `POST /webhook/zabbix`
+
+Authentication is via one of:
+- query string: `?token=...`
+- header: `x-webhook-token: ...`
+- header: `Authorization: Bearer ...`
+
+Set token (default is `123456`):
+
+```bash
+export WEBHOOK_TOKEN="replace-me"
+```
+
 ## Notes
 
 - Ping uses the system `ping` command, so ensure it is available on your host.

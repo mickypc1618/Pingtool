@@ -222,3 +222,18 @@ td {
   gap: 0.5rem;
   align-items: center;
 }
+
+
+.header { display:flex; justify-content:space-between; align-items:baseline; gap:10px; }
+.muted { color:#555; }
+.small { font-size:12px; }
+.banner { padding:24px; border-radius:12px; margin-bottom:20px; }
+.banner.up { background:#e9f7ef; border:2px solid #7bc47f; }
+.banner.down { background:#fdecec; border:2px solid #e06666; }
+.banner.neutral { background:#fff8e1; border:2px solid #f4b400; }
+.banner-title { font-size:28px; font-weight:700; margin-bottom:6px; }
+.banner-sub { font-size:16px; }
+.pill { display:inline-block; padding:4px 12px; border-radius:999px; font-size:13px; }
+.pill.up { background:#e9f7ef; border:1px solid #b7e1c1; }
+.pill.down { background:#fdecec; border:1px solid #f3b5b5; }
+.pill.neutral { background:#fff8e1; border:1px solid #f4b400; }

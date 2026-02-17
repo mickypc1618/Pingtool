@@ -10,6 +10,7 @@ import shutil
 import ssl
 import urllib.error
 import urllib.request
+import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -25,6 +26,51 @@ BACKGROUND_STARTED = False
 BACKGROUND_LOCK = threading.Lock()
 PING_EXECUTOR = concurrent.futures.ThreadPoolExecutor(max_workers=PING_WORKERS)
 MANUFACTURERS = ["Draytek", "Mikrotik", "TP-Link"]
+WEBHOOK_TOKEN = os.environ.get("WEBHOOK_TOKEN", "123456")
+ALERT_STATE = {"last_event": None, "objects": {}}
+
+
+def now_iso():
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def status_class_from_text(raw_status):
+    value = str(raw_status or "").lower()
+    if any(word in value for word in ["red", "critical", "down", "offline", "disconnected", "not responding"]):
+        return "down"
+    if any(word in value for word in ["green", "up", "online", "connected", "ok", "normal", "clear"]):
+        return "up"
+    if any(word in value for word in ["yellow", "warning", "degraded", "amber", "orange"]):
+        return "neutral"
+    return "neutral"
+
+
+def require_webhook_token(req):
+    token = (
+        req.args.get("token")
+        or req.headers.get("x-webhook-token")
+        or req.headers.get("authorization", "").replace("Bearer ", "").strip()
+    )
+    return bool(token) and token == WEBHOOK_TOKEN
+
+
+def broadcast_update(key, status, message, source, status_class):
+    event = {
+        "key": key,
+        "status": status,
+        "message": message,
+        "source": source,
+        "timestamp": now_iso(),
+        "statusClass": status_class,
+    }
+    ALERT_STATE["last_event"] = event
+    ALERT_STATE["objects"][key] = {
+        "status": status,
+        "lastChange": event["timestamp"],
+        "message": message,
+        "source": source,
+        "statusClass": status_class,
+    }
 
 
 def get_db_connection():
@@ -623,6 +669,82 @@ def dashboard_plain():
         hosts=get_down_host_cards(show_unknown),
         show_unknown=show_unknown,
     )
+
+
+@app.route("/alerts")
+def alerts_page():
+    objects = [
+        {"key": key, **value}
+        for key, value in ALERT_STATE["objects"].items()
+    ]
+    objects.sort(key=lambda item: item.get("lastChange", ""), reverse=True)
+    return render_template(
+        "alerts.html",
+        last_event=ALERT_STATE["last_event"],
+        objects=objects,
+    )
+
+
+@app.route("/api/alerts/state")
+def alerts_state():
+    objects = [
+        {"key": key, **value}
+        for key, value in ALERT_STATE["objects"].items()
+    ]
+    objects.sort(key=lambda item: item.get("lastChange", ""), reverse=True)
+    return {
+        "lastEvent": ALERT_STATE["last_event"],
+        "objects": objects,
+    }
+
+
+@app.route("/webhook/vmware", methods=["POST"])
+def webhook_vmware():
+    if not require_webhook_token(request):
+        return {"ok": False, "error": "Unauthorized"}, 401
+
+    payload = request.get_json(silent=True)
+    text_body = ""
+    if isinstance(payload, dict):
+        text_body = str(payload.get("text") or payload.get("message") or payload)
+    else:
+        text_body = request.get_data(as_text=True)
+
+    key = "VMware Alarm"
+    status = "Unknown"
+    message = text_body.strip() or "VMware webhook received"
+    status_class = status_class_from_text(message)
+
+    broadcast_update(key, status, message, "VMware", status_class)
+    return {"ok": True}
+
+
+@app.route("/webhook/omada", methods=["POST"])
+def webhook_omada():
+    if not require_webhook_token(request):
+        return {"ok": False, "error": "Unauthorized"}, 401
+
+    payload = request.get_json(silent=True) or {}
+    key = str(payload.get("Controller") or "Omada")
+    status = str(payload.get("operation") or "Omada Event")
+    message = json.dumps(payload, ensure_ascii=False)
+    status_class = status_class_from_text(status)
+    broadcast_update(key, status, message, "Omada", status_class)
+    return {"ok": True}
+
+
+@app.route("/webhook/zabbix", methods=["POST"])
+def webhook_zabbix():
+    if not require_webhook_token(request):
+        return {"ok": False, "error": "Unauthorized"}, 401
+
+    payload = request.get_json(silent=True) or {}
+    key = str(payload.get("host") or payload.get("Host") or "Zabbix Host")
+    status = str(payload.get("severity") or payload.get("event_status") or "Zabbix Event")
+    message = str(payload.get("subject") or payload.get("message") or "")
+    status_class = status_class_from_text(status + " " + message)
+    broadcast_update(key, status, message, "Zabbix", status_class)
+    return {"ok": True}
 
 
 def background_ping_loop():
