@@ -1,0 +1,36 @@
+{% extends "layout_plain.html" %}
+
+{% block head %}
+  <meta http-equiv="refresh" content="60">
+{% endblock %}
+
+{% block content %}
+<section class="card">
+  <div class="section-header">
+    <h2>Agilico Dashboard</h2>
+    <div class="header-actions">
+      <a class="button" href="{{ url_for('ping_all') }}">Refresh Status</a>
+      {% if show_unknown %}
+        <a class="button button-secondary" href="{{ url_for('dashboard_plain') }}">Hide Unknown</a>
+      {% else %}
+        <a class="button button-secondary" href="{{ url_for('dashboard_plain', show_unknown=1) }}">Show Unknown</a>
+      {% endif %}
+    </div>
+  </div>
+  <p class="dashboard-subtitle">Down Hosts</p>
+  {% if hosts %}
+    <div class="down-grid">
+      {% for host in hosts %}
+      <div class="down-card">
+        <h3>{{ host['hostname'] }}</h3>
+        <p><strong>Down for:</strong> {{ host['downtime_display'] }}</p>
+        <p><strong>Supplier:</strong> {{ host['supplier'] or '—' }}</p>
+        <p><strong>Post Code:</strong> {{ host['post_code'] or '—' }}</p>
+      </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p>All hosts are currently reachable.</p>
+  {% endif %}
+</section>
+{% endblock %}

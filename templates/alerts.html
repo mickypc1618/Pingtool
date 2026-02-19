@@ -1,0 +1,72 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<section class="card">
+  <div class="header">
+    <h2>Live Alerts</h2>
+    <div class="muted small" id="conn">Auto refresh every 5s</div>
+  </div>
+
+  <div id="banner" class="banner {% if last_event %}{{ last_event.get('statusClass') or 'pending' }}{% else %}pending{% endif %}" {% if not last_event %}style="display:none"{% endif %}>
+    {% if last_event %}
+      <div class="banner-title">{{ last_event['status'] }} - {{ last_event['key'] }}</div>
+      <div class="banner-sub">
+        {{ last_event['timestamp'] }}{% if last_event['message'] %} - {{ last_event['message'] }}{% endif %}
+      </div>
+    {% endif %}
+  </div>
+
+  <h3>Objects (most recent first)</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>Key</th>
+        <th>Status</th>
+        <th>Last Change</th>
+        <th>Message</th>
+        <th>Source</th>
+      </tr>
+    </thead>
+    <tbody id="rows">
+      {% for o in objects %}
+      <tr>
+        <td>{{ o['key'] }}</td>
+        <td><span class="pill {{ o['statusClass'] }}">{{ o['status'] }}</span></td>
+        <td class="muted">{{ o['lastChange'] }}</td>
+        <td>{{ o['message'] }}</td>
+        <td class="muted">{{ o['source'] }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<script>
+  async function refreshAlerts() {
+    const res = await fetch("{{ url_for('alerts_state') }}", {cache: "no-store"});
+    if (!res.ok) return;
+    const payload = await res.json();
+    const banner = document.getElementById('banner');
+    const rows = document.getElementById('rows');
+
+    if (payload.lastEvent) {
+      const ev = payload.lastEvent;
+      banner.style.display = 'block';
+      banner.className = 'banner ' + (ev.statusClass || 'pending');
+      banner.innerHTML = `<div class="banner-title">${ev.status || ''} - ${ev.key || ''}</div><div class="banner-sub">${ev.timestamp || ''}${ev.message ? ' - ' + ev.message : ''}</div>`;
+    }
+
+    rows.innerHTML = (payload.objects || []).map(o => `
+      <tr>
+        <td>${o.key || ''}</td>
+        <td><span class="pill ${o.statusClass || 'neutral'}">${o.status || ''}</span></td>
+        <td class="muted">${o.lastChange || ''}</td>
+        <td>${o.message || ''}</td>
+        <td class="muted">${o.source || ''}</td>
+      </tr>
+    `).join('');
+  }
+
+  setInterval(refreshAlerts, 5000);
+</script>
+{% endblock %}
