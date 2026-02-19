@@ -228,6 +228,7 @@ td {
 .muted { color:#555; }
 .small { font-size:12px; }
 .banner { padding:24px; border-radius:12px; margin-bottom:20px; }
+.banner.pending { background:#ffffff; border:2px solid #d7deea; }
 .banner.up { background:#e9f7ef; border:2px solid #7bc47f; }
 .banner.down { background:#fdecec; border:2px solid #e06666; }
 .banner.neutral { background:#fff8e1; border:2px solid #f4b400; }

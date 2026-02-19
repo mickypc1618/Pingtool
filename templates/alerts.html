@@ -7,7 +7,7 @@
     <div class="muted small" id="conn">Auto refresh every 5s</div>
   </div>
 
-  <div id="banner" class="banner neutral" {% if not last_event %}style="display:none"{% endif %}>
+  <div id="banner" class="banner {% if last_event %}{{ last_event.get('statusClass') or 'pending' }}{% else %}pending{% endif %}" {% if not last_event %}style="display:none"{% endif %}>
     {% if last_event %}
       <div class="banner-title">{{ last_event['status'] }} - {{ last_event['key'] }}</div>
       <div class="banner-sub">
@@ -52,7 +52,7 @@
     if (payload.lastEvent) {
       const ev = payload.lastEvent;
       banner.style.display = 'block';
-      banner.className = 'banner ' + (ev.statusClass || 'neutral');
+      banner.className = 'banner ' + (ev.statusClass || 'pending');
       banner.innerHTML = `<div class="banner-title">${ev.status || ''} - ${ev.key || ''}</div><div class="banner-sub">${ev.timestamp || ''}${ev.message ? ' - ' + ev.message : ''}</div>`;
     }
 
