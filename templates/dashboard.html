@@ -1,0 +1,65 @@
+{% extends "layout.html" %}
+
+{% block head %}
+  <meta http-equiv="refresh" content="60">
+{% endblock %}
+
+{% block content %}
+<section class="card">
+  <div class="section-header">
+    <h2>Agilico Dashboard</h2>
+    <div class="header-actions">
+      <a class="button" href="{{ url_for('ping_all') }}">Refresh Status</a>
+      {% if show_unknown %}
+        <a class="button button-secondary" href="{{ url_for('dashboard') }}">Hide Unknown</a>
+      {% else %}
+        <a class="button button-secondary" href="{{ url_for('dashboard', show_unknown=1) }}">Show Unknown</a>
+      {% endif %}
+    </div>
+  </div>
+  <p class="dashboard-subtitle">Down Hosts</p>
+  {% if hosts %}
+    <div class="down-grid">
+      {% for host in hosts %}
+      <div class="down-card">
+        <h3>{{ host['hostname'] }}</h3>
+        <p><strong>Down for:</strong> {{ host['downtime_display'] }}</p>
+        <p><strong>Supplier:</strong> {{ host['supplier'] or '—' }}</p>
+        <p><strong>Post Code:</strong> {{ host['post_code'] or '—' }}</p>
+      </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p>All hosts are currently reachable.</p>
+  {% endif %}
+</section>
+
+<p class="muted small">Alert sound file: <code>static/sounds/alert.mp3</code></p>
+<audio id="dashboard-alert-sound" preload="auto" src="{{ url_for('static', filename='sounds/alert.mp3') }}"></audio>
+<script>
+  (function () {
+    const storageKey = "pingtool_dashboard_alert_signature";
+    const currentSignature = {{ hosts | map(attribute='hostname') | list | join('|') | tojson }};
+    const hasDownHosts = {{ (hosts|length > 0) | tojson }};
+
+    function playDashboardAlert() {
+      const audio = document.getElementById("dashboard-alert-sound");
+      if (!audio) return;
+      audio.currentTime = 0;
+      audio.play().catch(() => {
+        // Browser autoplay policies may block sound until user interaction.
+      });
+    }
+
+    try {
+      const previousSignature = sessionStorage.getItem(storageKey);
+      if (hasDownHosts && previousSignature && previousSignature !== currentSignature) {
+        playDashboardAlert();
+      }
+      sessionStorage.setItem(storageKey, currentSignature);
+    } catch (e) {
+      // Ignore storage errors.
+    }
+  })();
+</script>
+{% endblock %}
