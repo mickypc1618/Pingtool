@@ -33,4 +33,33 @@
     <p>All hosts are currently reachable.</p>
   {% endif %}
 </section>
+
+<p class="muted small">Alert sound file: <code>static/sounds/alert.mp3</code></p>
+<audio id="dashboard-alert-sound" preload="auto" src="{{ url_for('static', filename='sounds/alert.mp3') }}"></audio>
+<script>
+  (function () {
+    const storageKey = "pingtool_dashboard_alert_signature";
+    const currentSignature = {{ hosts | map(attribute='hostname') | list | join('|') | tojson }};
+    const hasDownHosts = {{ (hosts|length > 0) | tojson }};
+
+    function playDashboardAlert() {
+      const audio = document.getElementById("dashboard-alert-sound");
+      if (!audio) return;
+      audio.currentTime = 0;
+      audio.play().catch(() => {
+        // Browser autoplay policies may block sound until user interaction.
+      });
+    }
+
+    try {
+      const previousSignature = sessionStorage.getItem(storageKey);
+      if (hasDownHosts && previousSignature && previousSignature !== currentSignature) {
+        playDashboardAlert();
+      }
+      sessionStorage.setItem(storageKey, currentSignature);
+    } catch (e) {
+      // Ignore storage errors.
+    }
+  })();
+</script>
 {% endblock %}

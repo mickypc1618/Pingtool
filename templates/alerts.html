@@ -6,6 +6,7 @@
     <h2>Live Alerts</h2>
     <div class="muted small" id="conn">Auto refresh every 5s</div>
   </div>
+  <p class="muted small">Alert sound file: <code>static/sounds/alert.mp3</code></p>
 
   <div id="banner" class="banner {% if last_event %}{{ last_event.get('statusClass') or 'pending' }}{% else %}pending{% endif %}" {% if not last_event %}style="display:none"{% endif %}>
     {% if last_event %}
@@ -41,7 +42,19 @@
   </table>
 </section>
 
+<audio id="alert-sound" preload="auto" src="{{ url_for('static', filename='sounds/alert.mp3') }}"></audio>
 <script>
+  let lastEventTimestamp = {{ (last_event['timestamp'] if last_event else '') | tojson }};
+
+  function playAlertSound() {
+    const audio = document.getElementById('alert-sound');
+    if (!audio) return;
+    audio.currentTime = 0;
+    audio.play().catch(() => {
+      // Browser autoplay policies may block sound until user interaction.
+    });
+  }
+
   async function refreshAlerts() {
     const res = await fetch("{{ url_for('alerts_state') }}", {cache: "no-store"});
     if (!res.ok) return;
@@ -51,9 +64,14 @@
 
     if (payload.lastEvent) {
       const ev = payload.lastEvent;
+      const hasNewEvent = ev.timestamp && ev.timestamp !== lastEventTimestamp;
       banner.style.display = 'block';
       banner.className = 'banner ' + (ev.statusClass || 'pending');
       banner.innerHTML = `<div class="banner-title">${ev.status || ''} - ${ev.key || ''}</div><div class="banner-sub">${ev.timestamp || ''}${ev.message ? ' - ' + ev.message : ''}</div>`;
+      if (hasNewEvent) {
+        playAlertSound();
+      }
+      lastEventTimestamp = ev.timestamp || lastEventTimestamp;
     }
 
     rows.innerHTML = (payload.objects || []).map(o => `

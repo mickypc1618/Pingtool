@@ -66,6 +66,7 @@ The app now includes webhook endpoints and a live alerts page with the same visu
 
 - Live alerts UI: `/alerts`
 - State API: `/api/alerts/state`
+- Alert sound file path (used by `/alerts`, `/dashboard`, and `/dashboard/plain`): `static/sounds/alert.mp3`
 - Webhook endpoints:
   - `POST /webhook/vmware`
   - `POST /webhook/omada`
