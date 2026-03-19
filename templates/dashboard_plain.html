@@ -26,6 +26,20 @@
         <p><strong>Down for:</strong> {{ host['downtime_display'] }}</p>
         <p><strong>Supplier:</strong> {{ host['supplier'] or '—' }}</p>
         <p><strong>Post Code:</strong> {{ host['post_code'] or '—' }}</p>
+        <div class="outage-history">
+          <p><strong>Down today:</strong> {{ host['outages_today'] }}</p>
+          <p><strong>Down this week:</strong> {{ host['outages_week'] }}</p>
+          <p><strong>Recent outages:</strong></p>
+          {% if host['recent_outages'] %}
+            <ul>
+              {% for outage in host['recent_outages'] %}
+              <li>{{ outage }}</li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <p class="small">No outage history recorded this week.</p>
+          {% endif %}
+        </div>
       </div>
       {% endfor %}
     </div>

@@ -177,6 +177,21 @@ td {
   margin-bottom: 0.5rem;
 }
 
+.outage-history {
+  margin-top: 0.9rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(127, 29, 29, 0.18);
+}
+
+.outage-history ul {
+  margin: 0.35rem 0 0;
+  padding-left: 1.2rem;
+}
+
+.outage-history li {
+  margin-bottom: 0.25rem;
+}
+
 @media (max-width: 1200px) {
   .down-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));

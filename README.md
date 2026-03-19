@@ -94,6 +94,7 @@ export WEBHOOK_TOKEN="replace-me"
 - If ping fails, Pingtool will optionally use a web proof-of-life check (`curl -k`) against the configured `Web URL` and treat HTTP `200` as up.
 - New hosts are checked as soon as possible after creation; if they fail 4 checks they become Unknown.
 - Unknown hosts are scheduled every hour; known hosts are scheduled every minute, with jitter so checks are staggered.
+- Down-host dashboard cards include outage history, including how many times a host has gone down today, how many times it has gone down during the current Monday-to-Friday work week, and a short list of recent outage timestamps.
 - Timestamps are stored in UTC ISO-8601 format.
 
 ## Manufacturer notes

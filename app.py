@@ -159,6 +159,16 @@ def init_db():
             );
             """
         )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS outage_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                host_id INTEGER NOT NULL,
+                started_at TEXT NOT NULL,
+                FOREIGN KEY (host_id) REFERENCES hosts(id) ON DELETE CASCADE
+            );
+            """
+        )
         columns = {
             row["name"]
             for row in connection.execute("PRAGMA table_info(hosts)").fetchall()
@@ -301,12 +311,46 @@ def schedule_next_ping(last_success_at, is_up, failed_attempts):
     )
 
 
+def get_today_window(now):
+    start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    end = start + timedelta(days=1)
+    return start, end
+
+
+def get_workweek_window(now):
+    monday = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+    saturday = monday + timedelta(days=5)
+    return monday, saturday
+
+
+def format_outage_timestamp(timestamp):
+    parsed = parse_db_timestamp(timestamp)
+    if parsed is None:
+        return timestamp
+    return parsed.strftime("%Y-%m-%d %H:%M UTC")
+
+
+def record_outage_event(connection, host_id, started_at):
+    connection.execute(
+        """
+        INSERT INTO outage_events (host_id, started_at)
+        VALUES (?, ?)
+        """,
+        (host_id, started_at),
+    )
+
+
 def update_host_status(host_id, is_up, last_success_at, failed_attempts):
     timestamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
     safe_failed_attempts = failed_attempts or 0
     new_failed_attempts = 0 if is_up else safe_failed_attempts + (0 if last_success_at else 1)
     next_ping_at = schedule_next_ping(last_success_at, is_up, new_failed_attempts)
     with get_db_connection() as connection:
+        current_host = connection.execute(
+            "SELECT last_status FROM hosts WHERE id = ?",
+            (host_id,),
+        ).fetchone()
+        previous_status = current_host["last_status"] if current_host else None
         if is_up:
             connection.execute(
                 """
@@ -332,6 +376,8 @@ def update_host_status(host_id, is_up, last_success_at, failed_attempts):
                 """,
                 (new_failed_attempts, timestamp, next_ping_at, host_id),
             )
+            if previous_status != 0:
+                record_outage_event(connection, host_id, timestamp)
         connection.commit()
 
 
@@ -666,6 +712,9 @@ def ping_all():
 
 
 def get_down_host_cards(show_unknown):
+    now = datetime.now(timezone.utc)
+    today_start, today_end = get_today_window(now)
+    week_start, week_end = get_workweek_window(now)
     with get_db_connection() as connection:
         down_hosts = connection.execute(
             """
@@ -673,7 +722,20 @@ def get_down_host_cards(show_unknown):
             WHERE last_status = 0
             """
         ).fetchall()
-    now = datetime.now(timezone.utc)
+        outage_history_rows = connection.execute(
+            """
+            SELECT host_id, started_at
+            FROM outage_events
+            WHERE started_at >= ?
+            ORDER BY started_at DESC
+            """,
+            (week_start.isoformat(timespec="seconds"),),
+        ).fetchall()
+
+    outage_history_by_host = {}
+    for row in outage_history_rows:
+        outage_history_by_host.setdefault(row["host_id"], []).append(row["started_at"])
+
     formatted_hosts = []
     for host in down_hosts:
         last_success_at = host["last_success_at"]
@@ -688,6 +750,20 @@ def get_down_host_cards(show_unknown):
                 downtime_seconds = None
         if downtime_seconds is None and not show_unknown:
             continue
+        outage_history = outage_history_by_host.get(host["id"], [])
+        today_count = 0
+        week_count = 0
+        recent_outages = []
+        for started_at in outage_history:
+            parsed_started_at = parse_db_timestamp(started_at)
+            if parsed_started_at is None:
+                continue
+            if today_start <= parsed_started_at < today_end:
+                today_count += 1
+            if week_start <= parsed_started_at < week_end:
+                week_count += 1
+            if len(recent_outages) < 5:
+                recent_outages.append(format_outage_timestamp(started_at))
         formatted_hosts.append(
             {
                 "hostname": host["hostname"],
@@ -698,6 +774,9 @@ def get_down_host_cards(show_unknown):
                 "last_success_at": host["last_success_at"],
                 "downtime_seconds": downtime_seconds,
                 "downtime_display": format_duration(downtime_seconds),
+                "outages_today": today_count,
+                "outages_week": week_count,
+                "recent_outages": recent_outages,
             }
         )
     formatted_hosts.sort(
