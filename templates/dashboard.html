@@ -21,26 +21,36 @@
   {% if hosts %}
     <div class="down-grid">
       {% for host in hosts %}
-      <div class="down-card">
+      <article class="down-card">
         <h3>{{ host['hostname'] }}</h3>
         <p><strong>Down for:</strong> {{ host['downtime_display'] }}</p>
         <p><strong>Supplier:</strong> {{ host['supplier'] or '—' }}</p>
         <p><strong>Post Code:</strong> {{ host['post_code'] or '—' }}</p>
-        <div class="outage-history">
-          <p><strong>Down today:</strong> {{ host['outages_today'] }}</p>
-          <p><strong>Down this week:</strong> {{ host['outages_week'] }}</p>
-          <p><strong>Recent outages:</strong></p>
-          {% if host['recent_outages'] %}
-            <ul>
-              {% for outage in host['recent_outages'] %}
-              <li>{{ outage }}</li>
-              {% endfor %}
-            </ul>
-          {% else %}
-            <p class="small">No outage history recorded this week.</p>
-          {% endif %}
+        <div class="outage-zones">
+          <section class="outage-zone outage-zone-results">
+            <span class="outage-zone-label">Results</span>
+            {% if host['recent_outages'] %}
+              <ul class="outage-results-list">
+                {% for outage in host['recent_outages'] %}
+                <li>{{ outage }}</li>
+                {% endfor %}
+              </ul>
+            {% else %}
+              <p class="small">No recent outages</p>
+            {% endif %}
+          </section>
+          <section class="outage-zone">
+            <span class="outage-zone-label">Day</span>
+            <strong>{{ host['outages_today'] }}</strong>
+            <span class="small">times down today</span>
+          </section>
+          <section class="outage-zone">
+            <span class="outage-zone-label">Week</span>
+            <strong>{{ host['outages_week'] }}</strong>
+            <span class="small">times down Mon–Fri</span>
+          </section>
         </div>
-      </div>
+      </article>
       {% endfor %}
     </div>
   {% else %}
