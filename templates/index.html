@@ -1,0 +1,290 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<section class="card">
+  <h2>Add Host</h2>
+  <form method="post" class="form-grid">
+    <label>
+      Hostname
+      <input type="text" name="hostname" required>
+    </label>
+    <label>
+      IP Address
+      <input type="text" name="ip_address" placeholder="203.0.113.10" required>
+    </label>
+    <label>
+      Manufacturer
+      <select name="manufacturer" required>
+        {% for manufacturer in manufacturers %}
+          <option value="{{ manufacturer }}">{{ manufacturer }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>
+      Supplier
+      <input type="text" name="supplier" placeholder="Example Supplier Ltd">
+    </label>
+    <label>
+      Type
+      <input type="text" name="host_type" placeholder="Router">
+    </label>
+    <label>
+      Post Code
+      <input type="text" name="post_code" placeholder="AB12 3CD">
+    </label>
+    <label>
+      Web URL (Proof of Life)
+      <input type="url" name="web_url" placeholder="https://203.0.113.10:4433/">
+    </label>
+    <button type="submit">Save Host</button>
+  </form>
+</section>
+
+<section class="card">
+  <h2>Bulk Upload Hosts</h2>
+  <form method="post" action="{{ url_for('bulk_upload') }}" class="form-grid">
+    <label>
+      Enter one host per line (hostname,IP,PostCode). PostCode is per-host in CSV
+      <textarea name="bulk_hosts" rows="6" placeholder="router-1,203.0.113.10,AB12 3CD"></textarea>
+    </label>
+    <label>
+      Manufacturer for uploaded hosts
+      <select name="bulk_manufacturer" required>
+        {% for manufacturer in manufacturers %}
+          <option value="{{ manufacturer }}">{{ manufacturer }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>
+      Supplier for uploaded hosts
+      <input type="text" name="bulk_supplier" placeholder="Example Supplier Ltd">
+    </label>
+    <label>
+      Type for uploaded hosts
+      <input type="text" name="bulk_host_type" placeholder="Router">
+    </label>
+    <label>
+      Post Code for uploaded hosts
+      <input type="text" name="bulk_post_code" placeholder="AB12 3CD">
+    </label>
+    <button type="submit">Upload Hosts</button>
+  </form>
+</section>
+
+<section class="card">
+  <div class="section-header">
+    <h2>Hosts</h2>
+    <a class="button" href="{{ url_for('ping_all') }}">Ping All</a>
+  </div>
+  <form method="get" class="host-controls">
+    <div class="host-search-row">
+      <label class="host-search-field">
+        <span>Search any field</span>
+        <input type="search" name="search" value="{{ search }}" placeholder="Hostname, IP, supplier, postcode, URL...">
+      </label>
+      <div class="host-control-actions">
+        <button type="submit">Apply</button>
+        <a class="button button-secondary" href="{{ url_for('index') }}">Clear</a>
+      </div>
+    </div>
+    <div class="host-filter-grid">
+      <label>
+        Manufacturer
+        <select name="filter_manufacturer">
+          <option value="">All</option>
+          {% for option in filter_options['manufacturer'] %}
+            <option value="{{ option }}" {% if filters['manufacturer'] == option %}selected{% endif %}>{{ option }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>
+        Supplier
+        <select name="filter_supplier">
+          <option value="">All</option>
+          {% for option in filter_options['supplier'] %}
+            <option value="{{ option }}" {% if filters['supplier'] == option %}selected{% endif %}>{{ option }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>
+        Type
+        <select name="filter_host_type">
+          <option value="">All</option>
+          {% for option in filter_options['host_type'] %}
+            <option value="{{ option }}" {% if filters['host_type'] == option %}selected{% endif %}>{{ option }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>
+        Post Code
+        <select name="filter_post_code">
+          <option value="">All</option>
+          {% for option in filter_options['post_code'] %}
+            <option value="{{ option }}" {% if filters['post_code'] == option %}selected{% endif %}>{{ option }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>
+        Status
+        <select name="filter_status">
+          <option value="">All</option>
+          <option value="up" {% if filters['status'] == 'up' %}selected{% endif %}>Up</option>
+          <option value="down" {% if filters['status'] == 'down' %}selected{% endif %}>Down</option>
+          <option value="unknown" {% if filters['status'] == 'unknown' %}selected{% endif %}>Unknown</option>
+          <option value="new" {% if filters['status'] == 'new' %}selected{% endif %}>New</option>
+        </select>
+      </label>
+      <input type="hidden" name="sort_by" value="{{ sort_by }}">
+      <input type="hidden" name="sort_dir" value="{{ sort_dir }}">
+    </div>
+  </form>
+  <form id="bulk-edit-form" method="post" action="{{ url_for('bulk_edit_hosts') }}" class="bulk-edit-form">
+    <input type="hidden" name="return_query" value="{{ current_query_string }}">
+    <label>
+      <input type="checkbox" name="apply_all" value="1">
+      Apply to all hosts
+    </label>
+    <label>
+      Manufacturer
+      <select name="bulk_edit_manufacturer">
+        <option value="">No change</option>
+        {% for manufacturer in manufacturers %}
+          <option value="{{ manufacturer }}">{{ manufacturer }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>
+      Supplier
+      <input type="text" name="bulk_edit_supplier" placeholder="No change">
+    </label>
+    <label>
+      Type
+      <input type="text" name="bulk_edit_host_type" placeholder="No change">
+    </label>
+    <div class="bulk-form-actions">
+      <button type="submit">Bulk Update Selected</button>
+      <button type="submit" formaction="{{ url_for('bulk_delete_hosts') }}" class="button button-danger">Bulk Delete Selected</button>
+    </div>
+  </form>
+  {% if hosts %}
+    <table>
+      <thead>
+        <tr>
+          <th>Select</th>
+          <th><a class="sort-link" href="{{ sort_urls['hostname'] }}">Hostname</a></th>
+          <th><a class="sort-link" href="{{ sort_urls['ip_address'] }}">IP Address</a></th>
+          <th><a class="sort-link" href="{{ sort_urls['manufacturer'] }}">Manufacturer</a></th>
+          <th><a class="sort-link" href="{{ sort_urls['supplier'] }}">Supplier</a></th>
+          <th><a class="sort-link" href="{{ sort_urls['host_type'] }}">Type</a></th>
+          <th><a class="sort-link" href="{{ sort_urls['post_code'] }}">Post Code</a></th>
+          <th><a class="sort-link" href="{{ sort_urls['web_url'] }}">Web URL</a></th>
+          <th><a class="sort-link" href="{{ sort_urls['status'] }}">Status</a></th>
+          <th><a class="sort-link" href="{{ sort_urls['last_checked_at'] }}">Last Checked</a></th>
+          <th><a class="sort-link" href="{{ sort_urls['last_success_at'] }}">Last Success</a></th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for host in hosts %}
+        {% if edit_id == host['id'] %}
+        <tr id="host-{{ host['id'] }}" class="editing-row">
+          <td colspan="12">
+            <form method="post" action="{{ url_for('edit_host', host_id=host['id']) }}" class="inline-edit-grid" data-edit-form>
+              <div class="inline-edit-field">
+                <label for="hostname-{{ host['id'] }}">Hostname</label>
+                <input id="hostname-{{ host['id'] }}" type="text" name="hostname" value="{{ host['hostname'] }}" required autofocus>
+              </div>
+              <div class="inline-edit-field">
+                <label for="ip-address-{{ host['id'] }}">IP Address</label>
+                <input id="ip-address-{{ host['id'] }}" type="text" name="ip_address" value="{{ host['ip_address'] }}" required>
+              </div>
+              <div class="inline-edit-field">
+                <label for="manufacturer-{{ host['id'] }}">Manufacturer</label>
+                <select id="manufacturer-{{ host['id'] }}" name="manufacturer" required>
+                  {% for manufacturer in manufacturers %}
+                    <option value="{{ manufacturer }}" {% if host['manufacturer'] == manufacturer %}selected{% endif %}>{{ manufacturer }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="inline-edit-field">
+                <label for="supplier-{{ host['id'] }}">Supplier</label>
+                <input id="supplier-{{ host['id'] }}" type="text" name="supplier" value="{{ host['supplier'] or '' }}" placeholder="Example Supplier Ltd">
+              </div>
+              <div class="inline-edit-field">
+                <label for="host-type-{{ host['id'] }}">Type</label>
+                <input id="host-type-{{ host['id'] }}" type="text" name="host_type" value="{{ host['host_type'] or '' }}" placeholder="Router">
+              </div>
+              <div class="inline-edit-field">
+                <label for="post-code-{{ host['id'] }}">Post Code</label>
+                <input id="post-code-{{ host['id'] }}" type="text" name="post_code" value="{{ host['post_code'] or '' }}" placeholder="AB12 3CD">
+              </div>
+              <div class="inline-edit-field inline-edit-field-wide">
+                <label for="web-url-{{ host['id'] }}">Web URL</label>
+                <input id="web-url-{{ host['id'] }}" type="url" name="web_url" value="{{ host['web_url'] or '' }}" placeholder="https://203.0.113.10:4433/">
+              </div>
+              <input type="hidden" name="return_query" value="{{ current_query_string }}">
+              <div class="inline-edit-actions">
+                <button type="submit">Save</button>
+                <a class="button button-secondary" href="{{ url_for('index') }}{% if current_query_string %}?{{ current_query_string }}{% endif %}#host-{{ host['id'] }}">Cancel</a>
+              </div>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr id="host-{{ host['id'] }}">
+          <td><input type="checkbox" form="bulk-edit-form" name="host_ids" value="{{ host['id'] }}"></td>
+          <td>{{ host['hostname'] }}</td>
+          <td>{{ host['ip_address'] }}</td>
+          <td>{{ host['manufacturer'] }}</td>
+          <td>{{ host['supplier'] or '—' }}</td>
+          <td>{{ host['host_type'] or '—' }}</td>
+          <td>{{ host['post_code'] or '—' }}</td>
+          <td>{{ host['web_url'] or '—' }}</td>
+          <td>
+            {% if host['last_success_at'] is none %}
+              {% if host['failed_attempts'] >= 4 %}
+                <span class="status unknown">Unknown</span>
+              {% else %}
+                <span class="status new">New</span>
+              {% endif %}
+            {% elif host['last_status'] %}
+              <span class="status up">Up</span>
+            {% else %}
+              <span class="status down">Down</span>
+            {% endif %}
+          </td>
+          <td>{{ host['last_checked_at'] or '—' }}</td>
+          <td>{{ host['last_success_at'] or '—' }}</td>
+          <td>
+            <a class="button" href="{{ url_for('ping_single', host_id=host['id']) }}{% if current_query_string %}?{{ current_query_string }}{% endif %}">Ping</a>
+            <a class="button button-secondary" href="{{ url_for('index') }}?{{ current_query_string }}{% if current_query_string %}&{% endif %}edit_id={{ host['id'] }}#host-{{ host['id'] }}">Edit</a>
+            <form method="post" action="{{ url_for('delete_host', host_id=host['id']) }}" class="inline-form">
+              <input type="hidden" name="return_query" value="{{ current_query_string }}">
+              <button type="submit" class="button button-danger">Delete</button>
+            </form>
+          </td>
+        </tr>
+        {% endif %}
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p>No hosts added yet.</p>
+  {% endif %}
+</section>
+<script>
+  (function () {
+    if (!window.location.hash) return;
+    const target = document.querySelector(window.location.hash);
+    if (!target) return;
+    target.scrollIntoView({ behavior: "smooth", block: "center" });
+    const firstInput = target.querySelector("[autofocus], input, select, textarea");
+    if (firstInput) {
+      firstInput.focus();
+      if (typeof firstInput.select === "function") {
+        firstInput.select();
+      }
+    }
+  })();
+</script>
+{% endblock %}
