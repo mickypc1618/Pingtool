@@ -10,6 +10,7 @@ import shutil
 import ssl
 import urllib.error
 import urllib.request
+from urllib.parse import urlencode
 import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -28,6 +29,18 @@ PING_EXECUTOR = concurrent.futures.ThreadPoolExecutor(max_workers=PING_WORKERS)
 MANUFACTURERS = ["Draytek", "Mikrotik", "TP-Link"]
 WEBHOOK_TOKEN = os.environ.get("WEBHOOK_TOKEN", "123456")
 ALERT_STATE = {"last_event": None, "objects": {}}
+HOST_SORT_COLUMNS = {
+    "hostname": "hostname",
+    "ip_address": "ip_address",
+    "manufacturer": "manufacturer",
+    "supplier": "supplier",
+    "host_type": "host_type",
+    "post_code": "post_code",
+    "web_url": "web_url",
+    "status": "last_status",
+    "last_checked_at": "last_checked_at",
+    "last_success_at": "last_success_at",
+}
 
 
 def now_iso():
@@ -437,6 +450,52 @@ def format_duration(seconds):
     return f"{hours}h {remainder}m"
 
 
+def get_host_filter_options(connection):
+    options = {}
+    for field in ("manufacturer", "supplier", "host_type", "post_code"):
+        rows = connection.execute(
+            f"""
+            SELECT DISTINCT {field}
+            FROM hosts
+            WHERE {field} IS NOT NULL AND TRIM({field}) != ''
+            ORDER BY {field} COLLATE NOCASE
+            """
+        ).fetchall()
+        options[field] = [row[0] for row in rows]
+    return options
+
+
+def build_index_query(**updates):
+    params = {
+        "search": request.args.get("search", "").strip(),
+        "filter_manufacturer": request.args.get("filter_manufacturer", "").strip(),
+        "filter_supplier": request.args.get("filter_supplier", "").strip(),
+        "filter_host_type": request.args.get("filter_host_type", "").strip(),
+        "filter_post_code": request.args.get("filter_post_code", "").strip(),
+        "filter_status": request.args.get("filter_status", "").strip(),
+        "sort_by": request.args.get("sort_by", "hostname").strip(),
+        "sort_dir": request.args.get("sort_dir", "asc").strip(),
+        "edit_id": request.args.get("edit_id", "").strip(),
+    }
+    for key, value in updates.items():
+        if value is None:
+            params.pop(key, None)
+        else:
+            params[key] = str(value)
+    cleaned = {key: value for key, value in params.items() if value}
+    return urlencode(cleaned)
+
+
+def redirect_to_index_with_state(default_fragment=None):
+    query = request.form.get("return_query", "").strip() or build_index_query()
+    target = url_for("index")
+    if query:
+        target = f"{target}?{query}"
+    if default_fragment:
+        target = f"{target}{default_fragment}"
+    return redirect(target)
+
+
 @app.route("/", methods=["GET", "POST"])
 def index():
     if request.method == "POST":
@@ -486,14 +545,84 @@ def index():
                 update_host_status(host_id, is_up, host["last_success_at"], host["failed_attempts"] or 0)
         return redirect(url_for("index"))
 
+    search = request.args.get("search", "").strip()
+    filters = {
+        "manufacturer": request.args.get("filter_manufacturer", "").strip(),
+        "supplier": request.args.get("filter_supplier", "").strip(),
+        "host_type": request.args.get("filter_host_type", "").strip(),
+        "post_code": request.args.get("filter_post_code", "").strip(),
+        "status": request.args.get("filter_status", "").strip(),
+    }
+    sort_by = request.args.get("sort_by", "hostname").strip()
+    sort_dir = request.args.get("sort_dir", "asc").strip().lower()
+    if sort_by not in HOST_SORT_COLUMNS:
+        sort_by = "hostname"
+    if sort_dir not in {"asc", "desc"}:
+        sort_dir = "asc"
+
+    conditions = []
+    params = []
+    if search:
+        search_term = f"%{search}%"
+        conditions.append(
+            """
+            (
+                hostname LIKE ?
+                OR ip_address LIKE ?
+                OR manufacturer LIKE ?
+                OR COALESCE(supplier, '') LIKE ?
+                OR COALESCE(host_type, '') LIKE ?
+                OR COALESCE(post_code, '') LIKE ?
+                OR COALESCE(web_url, '') LIKE ?
+                OR COALESCE(last_checked_at, '') LIKE ?
+                OR COALESCE(last_success_at, '') LIKE ?
+            )
+            """
+        )
+        params.extend([search_term] * 9)
+
+    for field in ("manufacturer", "supplier", "host_type", "post_code"):
+        if filters[field]:
+            conditions.append(f"COALESCE({field}, '') = ?")
+            params.append(filters[field])
+
+    if filters["status"] == "up":
+        conditions.append("last_success_at IS NOT NULL AND last_status = 1")
+    elif filters["status"] == "down":
+        conditions.append("last_success_at IS NOT NULL AND last_status = 0")
+    elif filters["status"] == "unknown":
+        conditions.append("last_success_at IS NULL AND COALESCE(failed_attempts, 0) >= 4")
+    elif filters["status"] == "new":
+        conditions.append("last_success_at IS NULL AND COALESCE(failed_attempts, 0) < 4")
+
+    where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+    sort_column = HOST_SORT_COLUMNS[sort_by]
+    order_clause = f"{sort_column} {'DESC' if sort_dir == 'desc' else 'ASC'}, hostname COLLATE NOCASE ASC"
     with get_db_connection() as connection:
-        hosts = connection.execute("SELECT * FROM hosts ORDER BY hostname").fetchall()
+        hosts = connection.execute(
+            f"SELECT * FROM hosts {where_clause} ORDER BY {order_clause}",
+            params,
+        ).fetchall()
+        filter_options = get_host_filter_options(connection)
     edit_id = request.args.get("edit_id", type=int)
+    sort_urls = {}
+    for column in HOST_SORT_COLUMNS:
+        next_dir = "desc" if sort_by == column and sort_dir == "asc" else "asc"
+        sort_urls[column] = (
+            url_for("index") + "?" + build_index_query(sort_by=column, sort_dir=next_dir, edit_id=None)
+        )
     return render_template(
         "index.html",
         hosts=hosts,
         manufacturers=MANUFACTURERS,
         edit_id=edit_id,
+        filter_options=filter_options,
+        filters=filters,
+        search=search,
+        sort_by=sort_by,
+        sort_dir=sort_dir,
+        sort_urls=sort_urls,
+        current_query_string=build_index_query(),
     )
 
 
@@ -557,7 +686,7 @@ def ping_single(host_id):
     if host:
         _, is_up = evaluate_host(host)
         update_host_status(host_id, is_up, host["last_success_at"], host["failed_attempts"] or 0)
-    return redirect(url_for("index"))
+    return redirect_to_index_with_state(default_fragment=f"#host-{host_id}")
 
 
 
@@ -597,7 +726,17 @@ def edit_host(host_id):
                 ),
             )
             connection.commit()
-    return redirect(url_for("index"))
+    return_query = request.form.get("return_query", "").strip()
+    if return_query:
+        filtered_query = "&".join(
+            part for part in return_query.split("&") if not part.startswith("edit_id=")
+        )
+    else:
+        filtered_query = build_index_query(edit_id=None)
+    target = url_for("index")
+    if filtered_query:
+        target = f"{target}?{filtered_query}"
+    return redirect(f"{target}#host-{host_id}")
 
 
 @app.route("/hosts/bulk_edit", methods=["POST"])
@@ -608,7 +747,7 @@ def bulk_edit_hosts():
         if host_id.isdigit()
     ]
     if not selected_ids:
-        return redirect(url_for("index"))
+        return redirect_to_index_with_state()
 
     apply_all = request.form.get("apply_all") == "1"
     manufacturer = request.form.get("bulk_edit_manufacturer", "").strip()
@@ -641,7 +780,7 @@ def bulk_edit_hosts():
             connection.execute(query, tuple(values + params))
             connection.commit()
 
-    return redirect(url_for("index"))
+    return redirect_to_index_with_state()
 
 
 
@@ -666,14 +805,14 @@ def bulk_delete_hosts():
             )
         connection.commit()
 
-    return redirect(url_for("index"))
+    return redirect_to_index_with_state()
 
 @app.route("/hosts/<int:host_id>/delete", methods=["POST"])
 def delete_host(host_id):
     with get_db_connection() as connection:
         connection.execute("DELETE FROM hosts WHERE id = ?", (host_id,))
         connection.commit()
-    return redirect(url_for("index"))
+    return redirect_to_index_with_state()
 
 
 def ping_all_hosts():
