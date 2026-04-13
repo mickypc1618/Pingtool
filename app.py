@@ -927,12 +927,43 @@ def get_down_host_cards(show_unknown):
     return formatted_hosts
 
 
+def get_host_status_metrics():
+    with get_db_connection() as connection:
+        up_count = connection.execute(
+            """
+            SELECT COUNT(*) AS total
+            FROM hosts
+            WHERE last_success_at IS NOT NULL AND last_status = 1
+            """
+        ).fetchone()["total"]
+        down_count = connection.execute(
+            """
+            SELECT COUNT(*) AS total
+            FROM hosts
+            WHERE last_success_at IS NOT NULL AND last_status = 0
+            """
+        ).fetchone()["total"]
+        unknown_count = connection.execute(
+            """
+            SELECT COUNT(*) AS total
+            FROM hosts
+            WHERE last_success_at IS NULL AND COALESCE(failed_attempts, 0) >= 4
+            """
+        ).fetchone()["total"]
+    return {
+        "up": up_count,
+        "down": down_count,
+        "unknown": unknown_count,
+    }
+
+
 @app.route("/dashboard")
 def dashboard():
     show_unknown = request.args.get("show_unknown") == "1"
     return render_template(
         "dashboard.html",
         hosts=get_down_host_cards(show_unknown),
+        metrics=get_host_status_metrics(),
         show_unknown=show_unknown,
     )
 
@@ -943,6 +974,7 @@ def dashboard_plain():
     return render_template(
         "dashboard_plain.html",
         hosts=get_down_host_cards(show_unknown),
+        metrics=get_host_status_metrics(),
         show_unknown=show_unknown,
     )
 

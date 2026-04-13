@@ -17,6 +17,20 @@
       {% endif %}
     </div>
   </div>
+  <div class="metric-grid">
+    <article class="metric-card up">
+      <p class="metric-label">Up</p>
+      <p class="metric-value">{{ metrics['up'] }}</p>
+    </article>
+    <article class="metric-card down">
+      <p class="metric-label">Down</p>
+      <p class="metric-value">{{ metrics['down'] }}</p>
+    </article>
+    <article class="metric-card unknown">
+      <p class="metric-label">Unknown</p>
+      <p class="metric-value">{{ metrics['unknown'] }}</p>
+    </article>
+  </div>
   <p class="dashboard-subtitle">Down Hosts</p>
   {% if hosts %}
     <div class="down-grid">
